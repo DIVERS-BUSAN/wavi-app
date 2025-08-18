@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../models/schedule.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 
 class LocationPicker extends StatefulWidget {
   final Location? initialLocation;
@@ -21,7 +23,7 @@ class _LocationPickerState extends State<LocationPicker> {
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
-  
+
   List<KakaoPlace> _searchResults = [];
   bool _isSearching = false;
   bool _isManualMode = false;
@@ -50,45 +52,48 @@ class _LocationPickerState extends State<LocationPicker> {
 
     setState(() => _isSearching = true);
 
+    final String restApiKey = dotenv.env['KAKAO_REST_API_KEY']! ?? '';
+
+    final String url = 'https://dapi.kakao.com/v2/local/search/keyword.json?query=$query';
+
     try {
-      // 실제 카카오 API 키가 필요하므로 현재는 목업 데이터를 사용합니다
-      // TODO: 실제 카카오 검색 API 연동
-      await Future.delayed(const Duration(seconds: 1)); // 네트워크 지연 시뮬레이션
-      
-      setState(() {
-        _searchResults = [
-          KakaoPlace(
-            placeName: '${query} 카페',
-            addressName: '서울특별시 강남구 ${query}로 123',
-            roadAddressName: '서울특별시 강남구 ${query}대로 456',
-            x: '127.123456',
-            y: '37.123456',
-          ),
-          KakaoPlace(
-            placeName: '${query} 레스토랑',
-            addressName: '서울특별시 강남구 ${query}동 789',
-            roadAddressName: '서울특별시 강남구 ${query}로 101',
-            x: '127.234567',
-            y: '37.234567',
-          ),
-          KakaoPlace(
-            placeName: '${query} 병원',
-            addressName: '서울특별시 서초구 ${query}동 321',
-            roadAddressName: '서울특별시 서초구 ${query}대로 654',
-            x: '127.345678',
-            y: '37.345678',
-          ),
-        ];
-        _isSearching = false;
-      });
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'KakaoAK $restApiKey',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(utf8.decode(response.bodyBytes));
+        final List<dynamic> documents = data['documents'];
+
+        // API 결과에서 최대 5개의 장소를 가져옵니다.
+        final List<KakaoPlace> places = documents
+            .take(5)
+            .map((item) => KakaoPlace.fromJson(item))
+            .toList();
+
+        setState(() {
+          _searchResults = places;
+          _isSearching = false;
+        });
+      } else {
+        // API 호출 실패 시 에러 처리
+        setState(() {
+          _searchResults = [];
+          _isSearching = false;
+        });
+        print('Failed to load places: ${response.statusCode}');
+      }
     } catch (e) {
       setState(() {
         _searchResults = [];
         _isSearching = false;
       });
+      print('Error searching places: $e');
     }
   }
-
   void _selectPlace(KakaoPlace place) {
     final location = Location(
       name: place.placeName,
@@ -96,7 +101,7 @@ class _LocationPickerState extends State<LocationPicker> {
       latitude: double.tryParse(place.y),
       longitude: double.tryParse(place.x),
     );
-    
+
     setState(() {
       _selectedLocation = location;
       _nameController.text = location.name;
@@ -108,18 +113,18 @@ class _LocationPickerState extends State<LocationPicker> {
 
   void _saveManualLocation() {
     if (_nameController.text.trim().isEmpty) return;
-    
+
     final location = Location(
       name: _nameController.text.trim(),
-      address: _addressController.text.trim().isEmpty 
-          ? null 
+      address: _addressController.text.trim().isEmpty
+          ? null
           : _addressController.text.trim(),
     );
-    
+
     setState(() {
       _selectedLocation = location;
     });
-    
+
     widget.onLocationSelected(location);
     Navigator.pop(context);
   }
@@ -171,7 +176,7 @@ class _LocationPickerState extends State<LocationPicker> {
               ],
             ),
             const Divider(),
-            
+
             if (!_isManualMode) ...[
               // 검색 모드
               TextField(
@@ -196,7 +201,7 @@ class _LocationPickerState extends State<LocationPicker> {
                 },
               ),
               const SizedBox(height: 16),
-              
+
               if (_isSearching)
                 const Center(child: CircularProgressIndicator())
               else if (_searchResults.isNotEmpty)
@@ -250,7 +255,7 @@ class _LocationPickerState extends State<LocationPicker> {
                 ],
               ),
             ],
-            
+
             if (_selectedLocation != null) ...[
               const Divider(),
               Container(
