@@ -4,15 +4,21 @@ import 'screens/schedule_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/notification_screen.dart';
 import 'screens/profile_screen.dart';
+import 'services/notification_service.dart';
 import 'package:kakao_map_plugin/kakao_map_plugin.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async{
+  WidgetsFlutterBinding.ensureInitialized();
+  
   await dotenv.load(fileName: ".env");
   AuthRepository.initialize(
       appKey: dotenv.env['KAKAO_JS_APP_KEY']! ?? '',
       baseUrl: 'http://localhost'
   );
+
+  // 알림 서비스 초기화
+  await NotificationService().initialize();
 
   runApp(const WaviApp());
 }
