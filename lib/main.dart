@@ -56,19 +56,47 @@ class _MainScreenState extends State<MainScreen> {
       floatingActionButton: Container(
         width: 70,
         height: 70,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFF041E42),
+              const Color(0xFF0A3D62),
+            ],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF041E42).withOpacity(0.3),
+              blurRadius: 15,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
         child: FloatingActionButton(
-          backgroundColor: const Color(0xFF041E42),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
           onPressed: () {
             setState(() {
               _selectedIndex = 2; // AI 대화 화면으로 이동
             });
           },
-          child: Image.asset(
-            'assets/images/wavi-logo-white.png',
+          child: Container(
             width: 50,
             height: 50,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withOpacity(0.1),
+            ),
+            child: Center(
+              child: Image.asset(
+                'assets/images/wavi-logo-white.png',
+                width: 35,
+                height: 35,
+              ),
+            ),
           ),
-          elevation: 8,
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
