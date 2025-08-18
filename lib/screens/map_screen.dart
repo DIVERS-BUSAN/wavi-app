@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:kakao_map_plugin/kakao_map_plugin.dart';
 
 class MapScreen extends StatelessWidget {
   const MapScreen({super.key});
@@ -51,14 +50,23 @@ class MapScreen extends StatelessWidget {
           ),
         ),
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: KakaoMap(
+      body: const SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.map,
+                size: 100,
+                color: Color(0xFF041E42),
               ),
-            ),
-          ],
+              SizedBox(height: 20),
+              Text(
+                '카카오 네비게이션 지도',
+                style: TextStyle(fontSize: 24),
+              ),
+            ],
+          ),
         ),
       ),
     );
