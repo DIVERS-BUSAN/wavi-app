@@ -4,7 +4,6 @@
 *.pyc
 *.swp
 .DS_Store
-.env
 .atom/
 .build/
 .buildlog/
@@ -12,12 +11,14 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+.env
 
 # IntelliJ related
 *.iml
 *.ipr
 *.iws
 .idea/
+.env
 
 # The .vscode folder contains launch configuration and tasks you configure in
 # VS Code which you may wish to be included in version control, so this line
@@ -33,6 +34,7 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+.env
 
 # Symbolication related
 app.*.symbols
@@ -44,5 +46,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+.env
 
 CLAUDE.md
