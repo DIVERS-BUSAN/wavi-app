@@ -4,8 +4,16 @@ import 'screens/schedule_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/notification_screen.dart';
 import 'screens/profile_screen.dart';
+import 'package:kakao_map_plugin/kakao_map_plugin.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-void main() {
+void main() async{
+  await dotenv.load(fileName: ".env");
+  AuthRepository.initialize(
+      appKey: dotenv.env['KAKAO_JS_APP_KEY']! ?? '',
+      baseUrl: 'http://localhost'
+  );
+
   runApp(const WaviApp());
 }
 
@@ -20,7 +28,8 @@ class WaviApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF041E42)),
         useMaterial3: true,
       ),
-      home: const MainScreen(),
+      home: const MainScreen(
+      ),
     );
   }
 }
