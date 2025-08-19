@@ -28,7 +28,6 @@ class _MapScreenState extends State<MapScreen> {
   final ScheduleService _scheduleService = ScheduleService();
   List<Schedule> _schedules = [];
   List<Marker> _scheduleMarkers = [];
-  List<Polyline> _routePolylines = [];
   DateTime _selectedDate = DateTime.now();
   bool _showDateSchedules = false;
 
@@ -118,7 +117,6 @@ class _MapScreenState extends State<MapScreen> {
     setState(() {
       _schedules = schedulesWithLocation;
       _scheduleMarkers = _createScheduleMarkers();
-      _routePolylines = _createRoutePolylines();
     });
   }
 
@@ -137,36 +135,6 @@ class _MapScreenState extends State<MapScreen> {
     }).toList();
   }
 
-  List<Polyline> _createRoutePolylines() {
-    if (!_showDateSchedules || _schedules.length < 2) {
-      return [];
-    }
-    
-    List<Polyline> polylines = [];
-    
-    for (int i = 0; i < _schedules.length - 1; i++) {
-      final current = _schedules[i];
-      final next = _schedules[i + 1];
-      
-      if (current.location?.latitude != null && 
-          current.location?.longitude != null &&
-          next.location?.latitude != null && 
-          next.location?.longitude != null) {
-        
-        polylines.add(
-          Polyline(
-            polylineId: 'route_$i',
-            points: [
-              LatLng(current.location!.latitude!, current.location!.longitude!),
-              LatLng(next.location!.latitude!, next.location!.longitude!),
-            ],
-          ),
-        );
-      }
-    }
-    
-    return polylines;
-  }
 
   List<Marker> get _markers {
     return [
@@ -596,7 +564,6 @@ class _MapScreenState extends State<MapScreen> {
                 center: _cameraCenter,
                 currentLevel: 4,
                 markers: _markers,
-                // polylines: Set<Polyline>.from(_routePolylines), // 카카오 지도 플러그인에서 폴리라인 지원 확인 필요
                 onMapCreated: (controller) async {
                   _mapController = controller;
                   await controller.setCenter(_cameraCenter);
