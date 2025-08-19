@@ -5,6 +5,9 @@ import 'dart:io' show Platform;
 import '../widgets/custom_app_bar.dart';
 import '../widgets/chat_bubble.dart';
 import '../models/chat_message.dart';
+import '../services/openai_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -17,6 +20,9 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
+  final OpenAIService _openAIService = OpenAIService();
+  
+  static const String _messagesKey = 'chat_messages';
   
   late FlutterTts _flutterTts;
   late stt.SpeechToText _speech;
@@ -32,7 +38,7 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _initializeSpeech();
     _initializeTts();
-    _addWelcomeMessage();
+    _loadChatHistory();
   }
 
   void _initializeSpeech() async {
@@ -149,16 +155,55 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _loadChatHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final messagesJson = prefs.getStringList(_messagesKey) ?? [];
+      
+      if (messagesJson.isEmpty) {
+        // 첫 실행시 환영 메시지 추가
+        _addWelcomeMessage();
+      } else {
+        // 저장된 채팅 기록 불러오기
+        final loadedMessages = messagesJson
+            .map((json) => ChatMessage.fromJson(jsonDecode(json)))
+            .toList();
+        
+        setState(() {
+          _messages.addAll(loadedMessages);
+        });
+      }
+    } catch (e) {
+      print('채팅 기록 불러오기 실패: $e');
+      _addWelcomeMessage();
+    }
+  }
+
   void _addWelcomeMessage() {
+    final welcomeMessage = ChatMessage(
+      content: '안녕하세요! 저는 웨이비(WAVI) AI 비서입니다. \n\n일정 관리, 길찾기, 그리고 다양한 질문에 답변해드릴게요!\n\n무엇을 도와드릴까요?',
+      type: MessageType.assistant,
+    );
+    
     setState(() {
-      _messages.add(
-        ChatMessage(
-          text: '안녕하세요! 저는 WAVI AI입니다. 🤖\n무엇을 도와드릴까요?',
-          isUser: false,
-          timestamp: DateTime.now(),
-        ),
-      );
+      _messages.add(welcomeMessage);
     });
+    
+    _saveChatHistory();
+  }
+
+  Future<void> _saveChatHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final messagesJson = _messages
+          .take(50) // 최근 50개 메시지만 저장
+          .map((message) => jsonEncode(message.toJson()))
+          .toList();
+      
+      await prefs.setStringList(_messagesKey, messagesJson);
+    } catch (e) {
+      print('채팅 기록 저장 실패: $e');
+    }
   }
 
   void _toggleListening() async {
@@ -252,57 +297,79 @@ class _ChatScreenState extends State<ChatScreen> {
   void _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
+    // 사용자 메시지 추가
+    final userMessage = ChatMessage(
+      content: text,
+      type: MessageType.user,
+    );
+
     setState(() {
-      _messages.add(
-        ChatMessage(
-          text: text,
-          isUser: true,
-          timestamp: DateTime.now(),
-        ),
-      );
+      _messages.add(userMessage);
       _textController.clear();
       _isTyping = true;
     });
 
     _scrollToBottom();
+    _saveChatHistory();
 
-    // AI 응답 시뮬레이션 (실제로는 GPT API 호출)
-    await Future.delayed(const Duration(seconds: 1));
-    
-    String response = _getAIResponse(text);
-    
-    setState(() {
-      _messages.add(
-        ChatMessage(
-          text: response,
-          isUser: false,
-          timestamp: DateTime.now(),
-        ),
+    try {
+      // OpenAI API 호출
+      final response = await _openAIService.sendMessage(_messages);
+      
+      if (response != null) {
+        setState(() {
+          _messages.add(response);
+          _isTyping = false;
+        });
+
+        // TTS로 응답 읽기
+        var result = await _flutterTts.speak(response.content);
+        if (result == 1) {
+          print("TTS Speaking: ${response.content}");
+        } else {
+          print("TTS Failed to speak");
+        }
+      } else {
+        throw Exception('AI 응답을 받을 수 없습니다.');
+      }
+    } catch (e) {
+      print('OpenAI API 오류: $e');
+      
+      // 오류 발생시 기본 응답
+      final errorMessage = ChatMessage(
+        content: '죄송합니다. 현재 서버에 문제가 있어 응답할 수 없습니다. 잠시 후 다시 시도해주세요.\n\n오류: ${e.toString()}',
+        type: MessageType.assistant,
       );
-      _isTyping = false;
-    });
-
-    // TTS로 응답 읽기
-    var result = await _flutterTts.speak(response);
-    if (result == 1) {
-      print("TTS Speaking: $response");
-    } else {
-      print("TTS Failed to speak");
+      
+      setState(() {
+        _messages.add(errorMessage);
+        _isTyping = false;
+      });
+      
+      // 오류 메시지도 TTS로 읽기
+      await _flutterTts.speak('죄송합니다. 현재 서버에 문제가 있어 응답할 수 없습니다.');
     }
     
     _scrollToBottom();
+    _saveChatHistory();
   }
 
-  String _getAIResponse(String query) {
-    // 간단한 응답 시뮬레이션
-    if (query.contains('날씨')) {
-      return '오늘은 맑은 날씨입니다! ☀️\n외출하기 좋은 날이네요.';
-    } else if (query.contains('안녕')) {
-      return '안녕하세요! 반갑습니다! 😊\n오늘 하루는 어떠셨나요?';
-    } else if (query.contains('길찾기') || query.contains('네비')) {
-      return '목적지를 알려주시면 최적의 경로를 안내해드리겠습니다! 🗺️';
-    } else {
-      return '네, 알겠습니다. "$query"에 대해 도움을 드리겠습니다.';
+  Future<void> _clearChatHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_messagesKey);
+      
+      setState(() {
+        _messages.clear();
+      });
+      
+      _addWelcomeMessage();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('채팅 기록이 삭제되었습니다')),
+      );
+    } catch (e) {
+      print('채팅 기록 삭제 실패: $e');
     }
   }
 
@@ -383,11 +450,40 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.safety_check, color: Colors.white),
-            onPressed: () {
-              // 안전모드 토글
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            onSelected: (value) {
+              switch (value) {
+                case 'clear':
+                  _showClearHistoryDialog();
+                  break;
+                case 'api_test':
+                  _testApiConnection();
+                  break;
+              }
             },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'clear',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline),
+                    SizedBox(width: 8),
+                    Text('채팅 기록 삭제'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'api_test',
+                child: Row(
+                  children: [
+                    Icon(Icons.wifi_protected_setup),
+                    SizedBox(width: 8),
+                    Text('API 연결 테스트'),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -574,5 +670,83 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
+  }
+
+  void _showClearHistoryDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('채팅 기록 삭제'),
+        content: const Text('모든 채팅 기록을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('취소'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _clearChatHistory();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('삭제', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _testApiConnection() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('API 연결을 테스트하는 중...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final isValid = await _openAIService.validateApiKey();
+      Navigator.pop(context);
+      
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(isValid ? 'API 연결 성공' : 'API 연결 실패'),
+          content: Text(
+            isValid 
+              ? 'OpenAI API에 성공적으로 연결되었습니다!' 
+              : 'API 키가 유효하지 않거나 연결에 문제가 있습니다.\n.env 파일의 OPENAI_API_KEY를 확인해주세요.'
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('확인'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      Navigator.pop(context);
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('연결 테스트 실패'),
+          content: Text('오류: ${e.toString()}'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('확인'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 }
