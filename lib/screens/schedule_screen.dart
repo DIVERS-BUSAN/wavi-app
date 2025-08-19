@@ -245,15 +245,238 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           );
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: events.length,
-          itemBuilder: (context, index) {
-            final schedule = events[index];
-            return _buildScheduleCard(schedule);
-          },
+        // 시간순 정렬
+        final sortedEvents = List<Schedule>.from(events)
+          ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+
+        return Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.calendar_today, size: 20, color: Colors.green[700]),
+                  const SizedBox(width: 8),
+                  Text(
+                    DateFormat('yyyy년 MM월 dd일 EEEE', 'ko_KR').format(_selectedDay!),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green[700],
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.green[50],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${sortedEvents.length}개 일정',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.green[700],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: sortedEvents.length,
+                itemBuilder: (context, index) {
+                  final schedule = sortedEvents[index];
+                  final isFirst = index == 0;
+                  final isLast = index == sortedEvents.length - 1;
+                  
+                  return _buildTimelineScheduleCard(
+                    schedule: schedule,
+                    index: index + 1,
+                    isFirst: isFirst,
+                    isLast: isLast,
+                  );
+                },
+              ),
+            ),
+          ],
         );
       },
+    );
+  }
+
+  Widget _buildTimelineScheduleCard({
+    required Schedule schedule,
+    required int index,
+    required bool isFirst,
+    required bool isLast,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 타임라인 인디케이터
+        Column(
+          children: [
+            if (!isFirst)
+              Container(
+                width: 2,
+                height: 20,
+                color: Colors.grey[300],
+              ),
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: Color(schedule.color.colorValue),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 3),
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(schedule.color.colorValue).withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: Text(
+                  '$index',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+            if (!isLast)
+              Container(
+                width: 2,
+                height: 80,
+                color: Colors.grey[300],
+              ),
+          ],
+        ),
+        const SizedBox(width: 16),
+        // 일정 카드
+        Expanded(
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            child: Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: InkWell(
+                onTap: () => _showScheduleDetail(schedule),
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Color(schedule.color.colorValue).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              DateFormat('HH:mm').format(schedule.dateTime),
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Color(schedule.color.colorValue),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          if (schedule.isAlarmEnabled)
+                            Icon(Icons.alarm, size: 16, color: Colors.blue[600]),
+                          const Spacer(),
+                          PopupMenuButton(
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'edit',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.edit, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('수정'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.delete, size: 18, color: Colors.red),
+                                    SizedBox(width: 8),
+                                    Text('삭제', style: TextStyle(color: Colors.red)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            onSelected: (value) {
+                              if (value == 'delete') {
+                                _showDeleteConfirmDialog(schedule.id);
+                              } else if (value == 'edit') {
+                                _showEditScheduleDialog(schedule);
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        schedule.title,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (schedule.location != null) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(Icons.location_on, size: 16, color: Colors.red[600]),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                schedule.location!.name,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[700],
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (schedule.description != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          schedule.description!,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey[600],
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
