@@ -627,7 +627,7 @@ class _MapScreenState extends State<MapScreen> {
           ),
           // 날짜 선택 및 일정 표시 컨트롤
           Positioned(
-            bottom: 16,
+            bottom: 40, // WAVI 버튼과 겹치지 않도록 높이 조정
             left: 16,
             right: 16,
             child: Container(
