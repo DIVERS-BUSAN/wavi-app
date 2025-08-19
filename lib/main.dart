@@ -7,9 +7,13 @@ import 'screens/profile_screen.dart';
 import 'services/notification_service.dart';
 import 'package:kakao_map_plugin/kakao_map_plugin.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 void main() async{
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 로케일 데이터 초기화
+  await initializeDateFormatting('ko_KR', null);
   
   await dotenv.load(fileName: ".env");
   AuthRepository.initialize(
@@ -71,19 +75,64 @@ class _MainScreenState extends State<MainScreen> {
       floatingActionButton: Container(
         width: 70,
         height: 70,
-        child: FloatingActionButton(
-          backgroundColor: const Color(0xFF041E42),
-          onPressed: () {
-            setState(() {
-              _selectedIndex = 2; // AI 대화 화면으로 이동
-            });
-          },
-          child: Image.asset(
-            'assets/images/wavi-logo-white.png',
-            width: 50,
-            height: 50,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFF041E42),
+              const Color(0xFF0A3D62),
+              const Color(0xFF1B4F72),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-          elevation: 8,
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF041E42).withOpacity(0.4),
+              blurRadius: 15,
+              offset: const Offset(0, 6),
+            ),
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(35),
+            splashColor: Colors.white.withOpacity(0.2),
+            highlightColor: Colors.white.withOpacity(0.1),
+            onTap: () {
+              setState(() {
+                _selectedIndex = 2; // AI 대화 화면으로 이동
+              });
+            },
+            child: Container(
+              width: 70,
+              height: 70,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.2),
+                  width: 2,
+                ),
+              ),
+              child: ClipOval(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  child: Image.asset(
+                    'assets/images/wavi-logo-white.png',
+                    width: 46,
+                    height: 46,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
