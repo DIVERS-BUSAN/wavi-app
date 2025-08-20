@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../widgets/custom_app_bar.dart';
@@ -7,6 +8,8 @@ import '../widgets/color_picker.dart';
 import '../models/schedule.dart';
 import '../services/schedule_service.dart';
 import '../services/notification_service.dart';
+import '../providers/language_provider.dart';
+import '../l10n/app_localizations.dart';
 
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({super.key});
@@ -91,8 +94,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     if (success) {
       _loadSchedules();
       if (mounted) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('일정이 삭제되었습니다')),
+          SnackBar(content: Text(l10n.scheduleDeleted)),
         );
       }
     }
@@ -100,9 +104,11 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    
     return Scaffold(
       extendBodyBehindAppBar: true,
-      appBar: const CustomAppBar(title: '일정'),
+      appBar: CustomAppBar(title: l10n.scheduleTab),
       body: SafeArea(
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
@@ -217,6 +223,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   Widget _buildEventList() {
+    final l10n = AppLocalizations.of(context);
     return ValueListenableBuilder<List<Schedule>>(
       valueListenable: _selectedEvents,
       builder: (context, events, _) {
@@ -233,8 +240,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 const SizedBox(height: 16),
                 Text(
                   _selectedDay != null 
-                      ? '${DateFormat('MM월 dd일').format(_selectedDay!)}에\n등록된 일정이 없습니다'
-                      : '날짜를 선택하여 일정을 확인하세요',
+                      ? '${DateFormat(context.read<LanguageProvider>().isEnglish ? 'MMM dd' : 'MM월 dd일').format(_selectedDay!)}${context.read<LanguageProvider>().isEnglish ? '\n' : '에\n'}${l10n.noSchedulesOnDate}'
+                      : l10n.selectDateToViewSchedules,
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 16,
@@ -259,7 +266,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                   Icon(Icons.calendar_today, size: 20, color: Colors.green[700]),
                   const SizedBox(width: 8),
                   Text(
-                    DateFormat('yyyy년 MM월 dd일 EEEE', 'ko_KR').format(_selectedDay!),
+                    DateFormat(context.read<LanguageProvider>().isEnglish ? 'EEEE, MMM dd yyyy' : 'yyyy년 MM월 dd일 EEEE', context.read<LanguageProvider>().isEnglish ? 'en_US' : 'ko_KR').format(_selectedDay!),
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -274,7 +281,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      '${sortedEvents.length}개 일정',
+                      l10n.scheduleCount(sortedEvents.length),
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.green[700],
@@ -400,23 +407,23 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                           const Spacer(),
                           PopupMenuButton(
                             itemBuilder: (context) => [
-                              const PopupMenuItem(
+                              PopupMenuItem(
                                 value: 'edit',
                                 child: Row(
                                   children: [
-                                    Icon(Icons.edit, size: 18),
-                                    SizedBox(width: 8),
-                                    Text('수정'),
+                                    const Icon(Icons.edit, size: 18),
+                                    const SizedBox(width: 8),
+                                    Text(AppLocalizations.of(context).edit),
                                   ],
                                 ),
                               ),
-                              const PopupMenuItem(
+                              PopupMenuItem(
                                 value: 'delete',
                                 child: Row(
                                   children: [
-                                    Icon(Icons.delete, size: 18, color: Colors.red),
-                                    SizedBox(width: 8),
-                                    Text('삭제', style: TextStyle(color: Colors.red)),
+                                    const Icon(Icons.delete, size: 18, color: Colors.red),
+                                    const SizedBox(width: 8),
+                                    Text(AppLocalizations.of(context).delete, style: const TextStyle(color: Colors.red)),
                                   ],
                                 ),
                               ),
@@ -572,23 +579,23 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                   ),
                   PopupMenuButton(
                     itemBuilder: (context) => [
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'edit',
                         child: Row(
                           children: [
-                            Icon(Icons.edit, size: 18),
-                            SizedBox(width: 8),
-                            Text('수정'),
+                            const Icon(Icons.edit, size: 18),
+                            const SizedBox(width: 8),
+                            Text(AppLocalizations.of(context).edit),
                           ],
                         ),
                       ),
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'delete',
                         child: Row(
                           children: [
-                            Icon(Icons.delete, size: 18, color: Colors.red),
-                            SizedBox(width: 8),
-                            Text('삭제', style: TextStyle(color: Colors.red)),
+                            const Icon(Icons.delete, size: 18, color: Colors.red),
+                            const SizedBox(width: 8),
+                            Text(AppLocalizations.of(context).delete, style: const TextStyle(color: Colors.red)),
                           ],
                         ),
                       ),
@@ -632,22 +639,23 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   void _showDeleteConfirmDialog(String id) {
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('일정 삭제'),
-        content: const Text('이 일정을 삭제하시겠습니까?'),
+        title: Text(l10n.deleteSchedule),
+        content: Text(l10n.deleteScheduleConfirm),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('취소'),
+            child: Text(l10n.cancel),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
               _deleteSchedule(id);
             },
-            child: const Text('삭제'),
+            child: Text(l10n.delete),
           ),
         ],
       ),
@@ -663,22 +671,22 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('날짜: ${DateFormat('yyyy년 MM월 dd일 HH:mm').format(schedule.dateTime)}'),
+            Text('${AppLocalizations.of(context).dateAndTime}: ${DateFormat(context.read<LanguageProvider>().isEnglish ? 'MMM dd yyyy HH:mm' : 'yyyy년 MM월 dd일 HH:mm').format(schedule.dateTime)}'),
             if (schedule.description != null)
-              Text('내용: ${schedule.description}'),
+              Text('${AppLocalizations.of(context).scheduleDescription}: ${schedule.description}'),
             if (schedule.location != null) ...[
-              Text('장소: ${schedule.location!.name}'),
+              Text('${AppLocalizations.of(context).location}: ${schedule.location!.name}'),
               if (schedule.location!.address != null)
-                Text('주소: ${schedule.location!.address}'),
+                Text('${AppLocalizations.of(context).location}: ${schedule.location!.address}'),
             ],
             if (schedule.isAlarmEnabled)
-              Text('알림: 설정됨'),
+              Text('${AppLocalizations.of(context).alarmSettings}: ${AppLocalizations.of(context).aiVoiceAlarm}'),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('확인'),
+            child: Text(AppLocalizations.of(context).confirm),
           ),
         ],
       ),
@@ -852,15 +860,15 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(widget.schedule == null 
-              ? '일정이 추가되었습니다' 
-              : '일정이 수정되었습니다'),
+              ? AppLocalizations.of(context).scheduleAdded
+              : AppLocalizations.of(context).scheduleUpdated),
         ),
       );
     } else if (!success && mounted) {
       // 저장 실패 시 에러 메시지 표시
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('일정 저장에 실패했습니다. 다시 시도해주세요.'),
+        SnackBar(
+          content: Text(AppLocalizations.of(context).saveScheduleFailed),
           backgroundColor: Colors.red,
         ),
       );
@@ -869,8 +877,9 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return AlertDialog(
-      title: Text(widget.schedule == null ? '새 일정 추가' : '일정 수정'),
+      title: Text(widget.schedule == null ? l10n.newSchedule : l10n.editSchedule),
       content: SizedBox(
         width: double.maxFinite,
         child: SingleChildScrollView(
@@ -881,13 +890,13 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
               children: [
                 TextFormField(
                   controller: _titleController,
-                  decoration: const InputDecoration(
-                    labelText: '일정 제목 *',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: '${l10n.scheduleTitleField}${l10n.required}',
+                    border: const OutlineInputBorder(),
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
-                      return '제목을 입력해주세요';
+                      return l10n.enterTitle;
                     }
                     return null;
                   },
@@ -895,9 +904,9 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _descriptionController,
-                  decoration: const InputDecoration(
-                    labelText: '일정 설명',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: l10n.scheduleDescription,
+                    border: const OutlineInputBorder(),
                   ),
                   maxLines: 3,
                 ),
@@ -905,12 +914,12 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
                 InkWell(
                   onTap: _selectDateTime,
                   child: InputDecorator(
-                    decoration: const InputDecoration(
-                      labelText: '날짜 및 시간 *',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: '${l10n.dateAndTime}${l10n.required}',
+                      border: const OutlineInputBorder(),
                     ),
                     child: Text(
-                      DateFormat('yyyy년 MM월 dd일 HH:mm').format(_selectedDateTime),
+                      DateFormat(context.read<LanguageProvider>().isEnglish ? 'MMM dd yyyy HH:mm' : 'yyyy년 MM월 dd일 HH:mm').format(_selectedDateTime),
                     ),
                   ),
                 ),
@@ -930,10 +939,10 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
                     );
                   },
                   child: InputDecorator(
-                    decoration: const InputDecoration(
-                      labelText: '장소',
-                      border: OutlineInputBorder(),
-                      suffixIcon: Icon(Icons.location_on),
+                    decoration: InputDecoration(
+                      labelText: l10n.location,
+                      border: const OutlineInputBorder(),
+                      suffixIcon: const Icon(Icons.location_on),
                     ),
                     child: _selectedLocation != null
                         ? Column(
@@ -953,9 +962,9 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
                                 ),
                             ],
                           )
-                        : const Text(
-                            '장소를 선택하세요',
-                            style: TextStyle(color: Colors.grey),
+                        : Text(
+                            l10n.selectLocation,
+                            style: const TextStyle(color: Colors.grey),
                           ),
                   ),
                 ),
@@ -970,7 +979,7 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
                 ),
                 const SizedBox(height: 16),
                 CheckboxListTile(
-                  title: const Text('알림 설정'),
+                  title: Text(l10n.alarmSettings),
                   value: _isAlarmEnabled,
                   onChanged: (value) {
                     setState(() {
@@ -982,9 +991,9 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
                   const SizedBox(height: 16),
                   DropdownButtonFormField<NotificationOption>(
                     value: _selectedNotificationOption,
-                    decoration: const InputDecoration(
-                      labelText: '알림 시간',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: l10n.alarmTime,
+                      border: const OutlineInputBorder(),
                     ),
                     items: NotificationService.notificationOptions
                         .map((option) => DropdownMenuItem(
@@ -1002,16 +1011,16 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
                   ),
                   const SizedBox(height: 16),
                   CheckboxListTile(
-                    title: const Row(
+                    title: Row(
                       children: [
-                        Icon(Icons.record_voice_over, color: Colors.blue, size: 20),
-                        SizedBox(width: 8),
-                        Text('AI 비서 음성 알림'),
+                        const Icon(Icons.record_voice_over, color: Colors.blue, size: 20),
+                        const SizedBox(width: 8),
+                        Text(l10n.aiVoiceAlarm),
                       ],
                     ),
-                    subtitle: const Text(
-                      'AI 비서가 일정 내용을 음성으로 알려드립니다',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    subtitle: Text(
+                      l10n.aiVoiceAlarmDescription,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                     value: _isAiVoiceEnabled,
                     onChanged: (value) {
@@ -1029,11 +1038,11 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('취소'),
+          child: Text(l10n.cancel),
         ),
         ElevatedButton(
           onPressed: _saveSchedule,
-          child: Text(widget.schedule == null ? '추가' : '수정'),
+          child: Text(widget.schedule == null ? l10n.add : l10n.edit),
         ),
       ],
     );
