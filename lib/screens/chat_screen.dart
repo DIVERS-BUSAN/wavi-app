@@ -6,7 +6,10 @@ import '../widgets/custom_app_bar.dart';
 import '../widgets/chat_bubble.dart';
 import '../models/chat_message.dart';
 import '../services/openai_service.dart';
+import '../services/schedule_service.dart';
+import '../models/schedule.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 import 'dart:convert';
 
 class ChatScreen extends StatefulWidget {
@@ -21,6 +24,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
   final OpenAIService _openAIService = OpenAIService();
+  final ScheduleService _scheduleService = ScheduleService();
   
   static const String _messagesKey = 'chat_messages';
   
@@ -312,6 +316,12 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
     _saveChatHistory();
 
+    // 일정 생성 요청인지 확인
+    if (_isScheduleRequest(text)) {
+      await _handleScheduleCreation(text);
+      return;
+    }
+
     try {
       // OpenAI API 호출
       final response = await _openAIService.sendMessage(_messages);
@@ -350,6 +360,149 @@ class _ChatScreenState extends State<ChatScreen> {
       await _flutterTts.speak('죄송합니다. 현재 서버에 문제가 있어 응답할 수 없습니다.');
     }
     
+    _scrollToBottom();
+    _saveChatHistory();
+  }
+
+  // 일정 생성 요청인지 확인
+  bool _isScheduleRequest(String text) {
+    final scheduleKeywords = [
+      '일정', '약속', '미팅', '회의', '만남', '스케줄',
+      '등록', '생성', '추가', '만들어', '예약',
+      '내일', '오늘', '모레', '다음주', '이번주',
+      '시간', '날짜', '알림', '리마인더'
+    ];
+    
+    final lowerText = text.toLowerCase();
+    return scheduleKeywords.any((keyword) => lowerText.contains(keyword));
+  }
+
+  // 일정 생성 처리
+  Future<void> _handleScheduleCreation(String text) async {
+    try {
+      // OpenAI를 통해 일정 정보 추출
+      final extractionPrompt = '''
+다음 텍스트에서 일정 정보를 추출해주세요:
+"$text"
+
+다음 JSON 형식으로 응답해주세요:
+{
+  "title": "일정 제목",
+  "description": "일정 설명 (없으면 null)",
+  "datetime": "YYYY-MM-DD HH:mm 형식",
+  "location": "장소명 (없으면 null)",
+  "hasAlarm": true/false
+}
+
+현재 시간: ${DateTime.now().toString()}
+오늘 날짜: ${DateFormat('yyyy-MM-dd').format(DateTime.now())}
+
+응답은 반드시 유효한 JSON 형식이어야 합니다.
+''';
+
+      final extractionMessages = [
+        ChatMessage(content: extractionPrompt, type: MessageType.user)
+      ];
+
+      final response = await _openAIService.sendMessage(extractionMessages);
+      
+      if (response != null) {
+        await _processScheduleData(response.content, text);
+      } else {
+        throw Exception('일정 정보를 추출할 수 없습니다.');
+      }
+    } catch (e) {
+      print('일정 생성 오류: $e');
+      await _respondWithError('일정 생성 중 오류가 발생했습니다: ${e.toString()}');
+    }
+  }
+
+  // 일정 데이터 처리
+  Future<void> _processScheduleData(String responseContent, String originalText) async {
+    try {
+      // JSON 응답에서 일정 정보 파싱
+      final jsonStart = responseContent.indexOf('{');
+      final jsonEnd = responseContent.lastIndexOf('}') + 1;
+      
+      if (jsonStart == -1 || jsonEnd <= jsonStart) {
+        throw Exception('유효한 JSON 형식을 찾을 수 없습니다.');
+      }
+      
+      final jsonString = responseContent.substring(jsonStart, jsonEnd);
+      final scheduleData = jsonDecode(jsonString);
+      
+      // 일정 생성
+      final title = scheduleData['title'] ?? '새 일정';
+      final description = scheduleData['description'];
+      final datetimeStr = scheduleData['datetime'];
+      final locationName = scheduleData['location'];
+      final hasAlarm = scheduleData['hasAlarm'] ?? false;
+      
+      if (datetimeStr == null) {
+        throw Exception('날짜와 시간 정보가 필요합니다.');
+      }
+      
+      final dateTime = DateTime.parse(datetimeStr.replaceAll(' ', 'T'));
+      
+      // Location 객체 생성 (필요시)
+      Location? location;
+      if (locationName != null && locationName.isNotEmpty) {
+        location = Location(name: locationName);
+      }
+      
+      // 일정 저장
+      final success = await _scheduleService.addSchedule(
+        title: title,
+        description: description,
+        dateTime: dateTime,
+        location: location,
+        isAlarmEnabled: hasAlarm,
+        alarmDateTime: hasAlarm ? dateTime.subtract(const Duration(minutes: 10)) : null,
+        color: ScheduleColor.blue,
+      );
+      
+      if (success) {
+        final successMessage = ChatMessage(
+          content: '✅ 일정이 성공적으로 생성되었습니다!\n\n'
+              '📋 제목: $title\n'
+              '📅 날짜: ${DateFormat('yyyy년 MM월 dd일 HH시 mm분').format(dateTime)}\n'
+              '${location != null ? '📍 장소: ${location.name}\n' : ''}'
+              '${description != null ? '📝 설명: $description\n' : ''}'
+              '${hasAlarm ? '⏰ 알림: 10분 전' : ''}',
+          type: MessageType.assistant,
+        );
+        
+        setState(() {
+          _messages.add(successMessage);
+          _isTyping = false;
+        });
+        
+        await _flutterTts.speak('일정이 성공적으로 생성되었습니다. $title이 ${DateFormat('MM월 dd일 HH시 mm분').format(dateTime)}에 등록되었습니다.');
+      } else {
+        throw Exception('일정 저장에 실패했습니다.');
+      }
+    } catch (e) {
+      print('일정 데이터 처리 오류: $e');
+      await _respondWithError('일정 정보를 처리하는 중 오류가 발생했습니다. 다시 시도해주세요.');
+    }
+    
+    _scrollToBottom();
+    _saveChatHistory();
+  }
+
+  // 오류 응답
+  Future<void> _respondWithError(String errorMessage) async {
+    final errorResponse = ChatMessage(
+      content: '❌ $errorMessage',
+      type: MessageType.assistant,
+    );
+    
+    setState(() {
+      _messages.add(errorResponse);
+      _isTyping = false;
+    });
+    
+    await _flutterTts.speak(errorMessage);
     _scrollToBottom();
     _saveChatHistory();
   }
