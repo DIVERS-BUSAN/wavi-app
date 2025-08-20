@@ -10,6 +10,8 @@ import '../services/schedule_service.dart';
 import '../models/schedule.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:convert';
 
 class ChatScreen extends StatefulWidget {
@@ -444,10 +446,14 @@ class _ChatScreenState extends State<ChatScreen> {
       
       final dateTime = DateTime.parse(datetimeStr.replaceAll(' ', 'T'));
       
-      // Location 객체 생성 (필요시)
+      // Location 객체 생성 - 실제 장소 검색
       Location? location;
       if (locationName != null && locationName.isNotEmpty) {
-        location = Location(name: locationName);
+        location = await _searchKakaoPlace(locationName);
+        if (location == null) {
+          // 장소를 찾지 못한 경우 이름만 저장
+          location = Location(name: locationName);
+        }
       }
       
       // 일정 저장
@@ -467,6 +473,7 @@ class _ChatScreenState extends State<ChatScreen> {
               '📋 제목: $title\n'
               '📅 날짜: ${DateFormat('yyyy년 MM월 dd일 HH시 mm분').format(dateTime)}\n'
               '${location != null ? '📍 장소: ${location.name}\n' : ''}'
+              '${location?.address != null ? '   주소: ${location!.address}\n' : ''}'
               '${description != null ? '📝 설명: $description\n' : ''}'
               '${hasAlarm ? '⏰ 알림: 10분 전' : ''}',
           type: MessageType.assistant,
@@ -488,6 +495,39 @@ class _ChatScreenState extends State<ChatScreen> {
     
     _scrollToBottom();
     _saveChatHistory();
+  }
+  
+  // 카카오 장소 검색
+  Future<Location?> _searchKakaoPlace(String query) async {
+    try {
+      final String restApiKey = dotenv.env['KAKAO_REST_API_KEY'] ?? '';
+      final String url = 'https://dapi.kakao.com/v2/local/search/keyword.json?query=$query&size=1';
+      
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Authorization': 'KakaoAK $restApiKey',
+        },
+      );
+      
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(utf8.decode(response.bodyBytes));
+        final List<dynamic> documents = data['documents'];
+        
+        if (documents.isNotEmpty) {
+          final place = documents.first;
+          return Location(
+            name: place['place_name'],
+            address: place['road_address_name'] ?? place['address_name'],
+            latitude: double.tryParse(place['y'].toString()),
+            longitude: double.tryParse(place['x'].toString()),
+          );
+        }
+      }
+    } catch (e) {
+      print('카카오 장소 검색 오류: $e');
+    }
+    return null;
   }
 
   // 오류 응답
