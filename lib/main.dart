@@ -54,13 +54,23 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
 
-  final List<Widget> _screens = [
-    const MapScreen(),
-    const ScheduleScreen(),
-    const ChatScreen(),
-    const NotificationScreen(),
-    const ProfileScreen(),
-  ];
+  List<Widget> _screens = [];
+  
+  @override
+  void initState() {
+    super.initState();
+    _buildScreens();
+  }
+  
+  void _buildScreens() {
+    _screens = [
+      const MapScreen(),
+      const ScheduleScreen(),
+      const ChatScreen(),
+      const NotificationScreen(),
+      const ProfileScreen(),
+    ];
+  }
 
   void _onItemTapped(int index) {
     setState(() {

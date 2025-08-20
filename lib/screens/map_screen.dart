@@ -16,7 +16,7 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   KakaoMapController? _mapController;
   LatLng _cameraCenter =  LatLng(37.5665, 126.9780);
   Marker? _currentLocationMarker;
@@ -42,8 +42,30 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initLocation();
-    _loadSchedules();
+    loadSchedules();
+  }
+  
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+  
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // 앱이 포그라운드로 돌아올 때 일정 새로고침
+      loadSchedules();
+    }
+  }
+  
+  @override
+  void didUpdateWidget(MapScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 위젯이 업데이트될 때마다 일정을 새로고침
+    loadSchedules();
   }
 
   Future<void> _initLocation() async {
@@ -92,7 +114,7 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  Future<void> _loadSchedules() async {
+  Future<void> loadSchedules() async {
     final schedules = await _scheduleService.getAllSchedules();
     
     // 장소가 있는 일정만 필터링
@@ -631,7 +653,7 @@ class _MapScreenState extends State<MapScreen> {
                                 _selectedDate = pickedDate;
                                 _showDateSchedules = true;
                               });
-                              await _loadSchedules();
+                              await loadSchedules();
                             }
                           },
                           child: Container(
@@ -654,7 +676,7 @@ class _MapScreenState extends State<MapScreen> {
                           setState(() {
                             _showDateSchedules = value;
                           });
-                          await _loadSchedules();
+                          await loadSchedules();
                         },
                         activeColor: Colors.green,
                       ),

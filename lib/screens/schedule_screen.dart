@@ -28,6 +28,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   void initState() {
     super.initState();
     _selectedDay = DateTime.now();
+    _focusedDay = _selectedDay!;
     _selectedEvents = ValueNotifier(_getEventsForDay(_selectedDay!));
     _loadSchedules();
   }
