@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'screens/map_screen.dart';
 import 'screens/schedule_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/notification_screen.dart';
 import 'screens/profile_screen.dart';
 import 'services/notification_service.dart';
+import 'providers/language_provider.dart';
+import 'l10n/app_localizations.dart';
 import 'package:kakao_map_plugin/kakao_map_plugin.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -24,7 +27,12 @@ void main() async{
   // 알림 서비스 초기화
   await NotificationService().initialize();
 
-  runApp(const WaviApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (context) => LanguageProvider(),
+      child: const WaviApp(),
+    ),
+  );
 }
 
 class WaviApp extends StatelessWidget {
@@ -32,14 +40,20 @@ class WaviApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'WAVI',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF041E42)),
-        useMaterial3: true,
-      ),
-      home: const MainScreen(
-      ),
+    return Consumer<LanguageProvider>(
+      builder: (context, languageProvider, child) {
+        return MaterialApp(
+          title: 'WAVI',
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF041E42)),
+            useMaterial3: true,
+          ),
+          locale: languageProvider.locale,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const MainScreen(),
+        );
+      },
     );
   }
 }
@@ -80,6 +94,8 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    
     return Scaffold(
       body: _screens[_selectedIndex],
       floatingActionButton: Container(

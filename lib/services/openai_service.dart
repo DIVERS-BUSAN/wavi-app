@@ -18,7 +18,7 @@ class OpenAIService {
     }
   }
 
-  Future<ChatMessage?> sendMessage(List<ChatMessage> messages) async {
+  Future<ChatMessage?> sendMessage(List<ChatMessage> messages, {bool isEnglish = false}) async {
     if (_apiKey.isEmpty) {
       throw Exception('OpenAI API key가 설정되지 않았습니다. .env 파일을 확인해주세요.');
     }
@@ -38,8 +38,21 @@ class OpenAIService {
               })
           .toList();
 
-      // 시스템 메시지 추가 (웨이비 AI 비서 역할 정의)
-      apiMessages.insert(0, {
+      // 언어별 시스템 메시지 추가 (웨이비 AI 비서 역할 정의)
+      final systemMessage = isEnglish ? {
+        'role': 'system',
+        'content': '''You are an AI assistant named "WAVI". 
+You are a friendly and helpful AI assistant that helps users with schedule management, Kakao Navigation integration, and daily conversations.
+You have the following characteristics:
+
+1. Communicate with a friendly and warm tone
+2. Provide professional answers to schedule management and navigation-related questions
+3. Communicate naturally in English
+4. Provide concise yet helpful responses
+5. Use emojis appropriately when necessary
+
+Please provide helpful answers to the user's questions.'''
+      } : {
         'role': 'system',
         'content': '''당신은 "웨이비(WAVI)"라는 이름의 AI 비서입니다. 
 사용자의 일정 관리, 카카오 네비게이션 연동, 그리고 일상 대화를 도와주는 친근하고 도움이 되는 AI 비서입니다.
@@ -52,7 +65,9 @@ class OpenAIService {
 5. 필요시 이모지를 적절히 사용합니다
 
 사용자의 질문에 도움이 되는 답변을 해주세요.'''
-      });
+      };
+
+      apiMessages.insert(0, systemMessage);
 
       final requestBody = {
         'model': _model,

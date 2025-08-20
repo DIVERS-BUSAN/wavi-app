@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:kakao_map_plugin/kakao_map_plugin.dart';
 import 'package:geolocator/geolocator.dart';
 import '../models/schedule.dart';
 import '../widgets/location_picker.dart';
 import '../services/schedule_service.dart';
+import '../providers/language_provider.dart';
+import '../l10n/app_localizations.dart';
 import 'package:intl/intl.dart';
 
 // 카카오 내비게이션 SDK 연동을 위한 패키지
@@ -203,7 +206,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       setState(() {
         _tappedMarkerId = markerId;
         _tappedLocation = Location(
-          name: '내 위치',
+          name: AppLocalizations.of(context).myLocation,
           latitude: latLng.latitude,
           longitude: latLng.longitude,
         );
@@ -232,6 +235,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   void _showPlaceInfoDialog() {
     if (_tappedLocation == null) return;
+    final l10n = AppLocalizations.of(context);
 
     // 아이콘 결정
     IconData iconData;
@@ -262,7 +266,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   if (_tappedSchedule != null) ...[
                     const SizedBox(height: 4),
                     Text(
-                      DateFormat('MM월 dd일 HH:mm').format(_tappedSchedule!.dateTime),
+                      DateFormat(context.read<LanguageProvider>().isEnglish ? 'MMM dd HH:mm' : 'MM월 dd일 HH:mm').format(_tappedSchedule!.dateTime),
                       style: const TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                   ],
@@ -276,26 +280,26 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (_tappedSchedule != null && _tappedSchedule!.description != null) ...[
-              const Text('일정 내용:', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text(l10n.scheduleContent, style: const TextStyle(fontWeight: FontWeight.bold)),
               Text(_tappedSchedule!.description!),
               const SizedBox(height: 8),
             ],
             if (_tappedLocation!.address != null) ...[
-              const Text('주소:', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text(l10n.address, style: const TextStyle(fontWeight: FontWeight.bold)),
               Text(_tappedLocation!.address!),
               const SizedBox(height: 8),
             ],
             if (_tappedLocation!.latitude != null && _tappedLocation!.longitude != null) ...[
-              const Text('좌표:', style: TextStyle(fontWeight: FontWeight.bold)),
-              Text('위도: ${_tappedLocation!.latitude!.toStringAsFixed(6)}'),
-              Text('경도: ${_tappedLocation!.longitude!.toStringAsFixed(6)}'),
+              Text(l10n.coordinates, style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('${l10n.latitude}: ${_tappedLocation!.latitude!.toStringAsFixed(6)}'),
+              Text('${l10n.longitude}: ${_tappedLocation!.longitude!.toStringAsFixed(6)}'),
             ],
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('닫기'),
+            child: Text(l10n.close),
           ),
           if (_tappedLocation!.latitude != null && _tappedLocation!.longitude != null)
             ElevatedButton.icon(
@@ -304,7 +308,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 _startKakaoNavi(_tappedLocation!);
               },
               icon: const Icon(Icons.directions),
-              label: const Text('길찾기'),
+              label: Text(l10n.navigate),
             ),
         ],
       ),
@@ -319,6 +323,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
+        final l10n = AppLocalizations.of(context);
         return Container(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -329,7 +334,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   Icon(Icons.route, color: Colors.green[700]),
                   const SizedBox(width: 8),
                   Text(
-                    DateFormat('MM월 dd일 일정').format(_selectedDate),
+                    l10n.dailySchedule(_selectedDate),
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -402,6 +407,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   // 카카오 내비게이션 길찾기
   Future<void> _startKakaoNavi(Location destination) async {
+    final l10n = AppLocalizations.of(context);
     try {
       // 현재 위치 가져오기
       Position? currentPosition;
@@ -411,8 +417,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       } catch (e) {
         print('현재 위치 가져오기 실패: $e');
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('현재 위치를 가져올 수 없습니다.'),
+          SnackBar(
+            content: Text(l10n.cannotGetCurrentLocation),
             backgroundColor: Colors.orange,
           ),
         );
@@ -440,7 +446,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       // 성공 메시지 표시
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${destination.name}로 길찾기를 시작합니다.'),
+          content: Text(l10n.navigatingTo(destination.name)),
           backgroundColor: Colors.green,
         ),
       );
@@ -449,7 +455,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       // 사용자에게 에러 메시지 보여주기
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('네비게이션 실행에 실패했습니다: ${e.message}'),
+          content: Text('${l10n.navigationFailed}: ${e.message}'),
           backgroundColor: Colors.red,
         ),
       );
@@ -478,25 +484,23 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   // 카카오 내비게이션 설치 안내 다이얼로그
   void _showKakaoNaviInstallDialog() {
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('카카오 내비게이션 설치 필요'),
-        content: const Text(
-          '길찾기 기능을 사용하려면 카카오 내비게이션 앱이 필요합니다.\n'
-          '앱스토어에서 카카오 내비게이션을 설치하시겠습니까?',
-        ),
+        title: Text(l10n.kakaoNavRequired),
+        content: Text(l10n.kakaoNavInstallPrompt),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('취소'),
+            child: Text(l10n.cancel),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
               _openKakaoNaviInstallPage();
             },
-            child: const Text('설치하기'),
+            child: Text(l10n.install),
           ),
         ],
       ),
@@ -505,13 +509,14 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   // 카카오 내비게이션 설치 페이지 열기
   Future<void> _openKakaoNaviInstallPage() async {
+    final l10n = AppLocalizations.of(context);
     try {
       await platform.invokeMethod('openKakaoNaviInstallPage');
     } catch (e) {
       print('설치 페이지 열기 실패: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('설치 페이지를 열 수 없습니다.'),
+        SnackBar(
+          content: Text(l10n.cannotOpenInstallPage),
           backgroundColor: Colors.orange,
         ),
       );
@@ -520,6 +525,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -544,7 +551,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    _selectedLocation?.name ?? '장소를 검색하세요',
+                    _selectedLocation?.name ?? l10n.searchLocation,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: Colors.black87, fontSize: 14),
@@ -596,10 +603,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
               ),
             ),
           if (_isLoadingLocation)
-            const Positioned(
+            Positioned(
               top: 12,
               right: 12,
-              child: Chip(label: Text('현재 위치 가져오는 중...')),
+              child: Chip(label: Text(l10n.currentLocationLoading)),
             ),
           // 현재 위치 버튼
           Positioned(
@@ -663,7 +670,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              DateFormat('yyyy년 MM월 dd일').format(_selectedDate),
+                              DateFormat(context.read<LanguageProvider>().isEnglish ? 'MMM dd yyyy' : 'yyyy년 MM월 dd일').format(_selectedDate),
                               style: const TextStyle(fontSize: 14),
                             ),
                           ),
@@ -694,24 +701,29 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                         children: [
                           Icon(Icons.route, color: Colors.green[700], size: 16),
                           const SizedBox(width: 8),
-                          Text(
-                            '${_schedules.length}개 일정',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.green[700],
-                              fontWeight: FontWeight.w500,
+                          Flexible(
+                            child: Text(
+                              l10n.scheduleCount(_schedules.length),
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.green[700],
+                                fontWeight: FontWeight.w500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const Spacer(),
-                          TextButton.icon(
-                            onPressed: () {
-                              // 일정 목록 보기
-                              _showSchedulesList();
-                            },
-                            icon: Icon(Icons.list, size: 16, color: Colors.green[700]),
-                            label: Text(
-                              '목록보기',
-                              style: TextStyle(fontSize: 13, color: Colors.green[700]),
+                          Flexible(
+                            child: TextButton.icon(
+                              onPressed: () {
+                                // 일정 목록 보기
+                                _showSchedulesList();
+                              },
+                              icon: Icon(Icons.list, size: 16, color: Colors.green[700]),
+                              label: Text(
+                                l10n.listView,
+                                style: TextStyle(fontSize: 13, color: Colors.green[700]),
+                              ),
                             ),
                           ),
                         ],

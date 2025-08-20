@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'dart:io' show Platform;
@@ -8,6 +9,8 @@ import '../models/chat_message.dart';
 import '../services/openai_service.dart';
 import '../services/schedule_service.dart';
 import '../models/schedule.dart';
+import '../providers/language_provider.dart';
+import '../l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
@@ -76,6 +79,56 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
   
+
+  Future<void> _setTtsLanguage(bool isEnglish) async {
+    try {
+      if (isEnglish) {
+        // 영어 TTS 설정
+        await _flutterTts.setLanguage("en-US");
+        
+        // 사용 가능한 음성 목록에서 영어 음성 찾기
+        var voices = await _flutterTts.getVoices;
+        var englishVoices = voices.where((voice) => 
+            voice["locale"].toString().startsWith("en")
+        ).toList();
+        
+        if (englishVoices.isNotEmpty) {
+          await _flutterTts.setVoice({
+            "name": englishVoices.first["name"],
+            "locale": englishVoices.first["locale"]
+          });
+        }
+      } else {
+        // 한국어 TTS 설정
+        await _flutterTts.setLanguage("ko-KR");
+        
+        // 사용 가능한 음성 목록에서 한국어 음성 찾기 (Yuna 우선)
+        var voices = await _flutterTts.getVoices;
+        var koreanVoices = voices.where((voice) => 
+            voice["locale"].toString().startsWith("ko")
+        ).toList();
+        
+        // Yuna 음성을 우선적으로 찾기
+        var yunaVoice = koreanVoices.firstWhere(
+          (voice) => voice["name"].toString().contains("Yuna"),
+          orElse: () => koreanVoices.isNotEmpty ? koreanVoices.first : null,
+        );
+        
+        if (yunaVoice != null) {
+          await _flutterTts.setVoice({
+            "name": yunaVoice["name"],
+            "locale": yunaVoice["locale"]
+          });
+        }
+      }
+      
+      await _flutterTts.setSpeechRate(0.5);
+      await _flutterTts.setVolume(1.0);
+      await _flutterTts.setPitch(1.0);
+    } catch (e) {
+      print("TTS language setting error: $e");
+    }
+  }
 
   void _initializeTts() async {
     _flutterTts = FlutterTts();
@@ -186,16 +239,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _addWelcomeMessage() {
-    final welcomeMessage = ChatMessage(
-      content: '안녕하세요! 저는 웨이비(WAVI) AI 비서입니다. \n\n일정 관리, 길찾기, 그리고 다양한 질문에 답변해드릴게요!\n\n무엇을 도와드릴까요?',
-      type: MessageType.assistant,
-    );
-    
-    setState(() {
-      _messages.add(welcomeMessage);
-    });
-    
-    _saveChatHistory();
+    // 환영 메시지는 동적으로 생성하므로 저장하지 않음
+    // 채팅 화면에서 build 시점에 동적으로 추가됨
   }
 
   Future<void> _saveChatHistory() async {
@@ -214,8 +259,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _toggleListening() async {
     if (!_speechEnabled) {
+      final l10n = AppLocalizations.of(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('음성 인식을 사용할 수 없습니다. 마이크 권한을 확인해주세요.')),
+        SnackBar(content: Text(l10n.micPermissionRequired)),
       );
       return;
     }
@@ -239,6 +285,16 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       setState(() => _isListening = true);
       
+      // 현재 언어 설정에 맞는 locale 설정 (안전하게)
+      String localeId = 'ko_KR';
+      try {
+        final languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+        localeId = languageProvider.isEnglish ? 'en_US' : 'ko_KR';
+      } catch (e) {
+        print('LanguageProvider 접근 실패: $e');
+        // 기본값으로 한국어 사용
+      }
+      
       await _speech.listen(
         onResult: (val) {
           setState(() {
@@ -257,24 +313,25 @@ class _ChatScreenState extends State<ChatScreen> {
             });
           }
         },
-        localeId: 'ko_KR',
+        localeId: localeId,
         listenFor: const Duration(seconds: 15),
         pauseFor: const Duration(seconds: 2),
         partialResults: true,
       );
       
+      final l10n = AppLocalizations.of(context);
       if (_voiceChatMode) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('🎤 음성 대화 모드 - 말씀해주세요 (마이크 버튼으로 종료)'),
-            duration: Duration(seconds: 2),
+          SnackBar(
+            content: Text(l10n.voiceChatModeStarted),
+            duration: const Duration(seconds: 2),
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('🎤 음성 인식 중... 말씀해주세요'),
-            duration: Duration(seconds: 2),
+          SnackBar(
+            content: Text(l10n.listeningToVoice),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -325,8 +382,20 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     try {
-      // OpenAI API 호출
-      final response = await _openAIService.sendMessage(_messages);
+      // 현재 언어 설정 가져오기 (안전하게)
+      LanguageProvider? languageProvider;
+      bool isEnglish = false;
+      try {
+        languageProvider = Provider.of<LanguageProvider>(context, listen: false);
+        isEnglish = languageProvider.isEnglish;
+      } catch (e) {
+        print('LanguageProvider 접근 실패: $e');
+        // 기본값으로 한국어 사용
+        isEnglish = false;
+      }
+      
+      // OpenAI API 호출 (언어 설정 전달)
+      final response = await _openAIService.sendMessage(_messages, isEnglish: isEnglish);
       
       if (response != null) {
         setState(() {
@@ -334,7 +403,8 @@ class _ChatScreenState extends State<ChatScreen> {
           _isTyping = false;
         });
 
-        // TTS로 응답 읽기
+        // TTS로 응답 읽기 (언어에 맞는 TTS 설정)
+        await _setTtsLanguage(isEnglish);
         var result = await _flutterTts.speak(response.content);
         if (result == 1) {
           print("TTS Speaking: ${response.content}");
@@ -342,7 +412,8 @@ class _ChatScreenState extends State<ChatScreen> {
           print("TTS Failed to speak");
         }
       } else {
-        throw Exception('AI 응답을 받을 수 없습니다.');
+        final errorMsg = isEnglish ? 'Unable to receive AI response.' : 'AI 응답을 받을 수 없습니다.';
+        throw Exception(errorMsg);
       }
     } catch (e) {
       print('OpenAI API 오류: $e');
@@ -592,8 +663,9 @@ class _ChatScreenState extends State<ChatScreen> {
       
       _addWelcomeMessage();
       
+      final l10n = AppLocalizations.of(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('채팅 기록이 삭제되었습니다')),
+        SnackBar(content: Text(l10n.chatHistoryDeleted)),
       );
     } catch (e) {
       print('채팅 기록 삭제 실패: $e');
@@ -625,6 +697,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -650,9 +724,9 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            const Text(
-              'AI 비서',
-              style: TextStyle(
+            Text(
+              l10n.chatTitle,
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -690,23 +764,23 @@ class _ChatScreenState extends State<ChatScreen> {
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'clear',
                 child: Row(
                   children: [
-                    Icon(Icons.delete_outline),
-                    SizedBox(width: 8),
-                    Text('채팅 기록 삭제'),
+                    const Icon(Icons.delete_outline),
+                    const SizedBox(width: 8),
+                    Text(l10n.clearChatHistory),
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'api_test',
                 child: Row(
                   children: [
-                    Icon(Icons.wifi_protected_setup),
-                    SizedBox(width: 8),
-                    Text('API 연결 테스트'),
+                    const Icon(Icons.wifi_protected_setup),
+                    const SizedBox(width: 8),
+                    Text(l10n.apiConnectionTest),
                   ],
                 ),
               ),
@@ -732,9 +806,25 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.only(top: 10, bottom: 10),
-                  itemCount: _messages.length + (_isTyping ? 1 : 0),
+                  itemCount: _messages.length + 1 + (_isTyping ? 1 : 0), // +1 for welcome message
                   itemBuilder: (context, index) {
-                    if (index == _messages.length && _isTyping) {
+                    // 환영 메시지 (항상 첫 번째)
+                    if (index == 0) {
+                      final languageProvider = Provider.of<LanguageProvider>(context);
+                      final welcomeContent = languageProvider.isEnglish 
+                          ? 'Hello! I\'m WAVI, your AI assistant. \n\nI can help you with schedule management, navigation, and answer various questions!\n\nWhat can I help you with?'
+                          : '안녕하세요! 저는 웨이비(WAVI) AI 비서입니다. \n\n일정 관리, 길찾기, 그리고 다양한 질문에 답변해드릴게요!\n\n무엇을 도와드릴까요?';
+                      
+                      final welcomeMessage = ChatMessage(
+                        content: welcomeContent,
+                        type: MessageType.assistant,
+                      );
+                      
+                      return ChatBubble(message: welcomeMessage);
+                    }
+                    
+                    // 타이핑 인디케이터
+                    if (index == _messages.length + 1 && _isTyping) {
                       return Padding(
                         padding: const EdgeInsets.all(16),
                         child: Row(
@@ -770,7 +860,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       );
                     }
-                    return ChatBubble(message: _messages[index]);
+                    
+                    // 실제 채팅 메시지들
+                    return ChatBubble(message: _messages[index - 1]);
                   },
                 ),
               ),
@@ -823,10 +915,10 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                           child: TextField(
                             controller: _textController,
-                            decoration: const InputDecoration(
-                              hintText: 'WAVI에게 메시지를 보내보세요...',
+                            decoration: InputDecoration(
+                              hintText: l10n.typeMessage,
                               border: InputBorder.none,
-                              contentPadding: EdgeInsets.symmetric(
+                              contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 16,
                                 vertical: 12,
                               ),
@@ -864,12 +956,11 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               color: Colors.grey[50],
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildQuickAction(Icons.tips_and_updates, '맞춤 추천'),
-                  _buildQuickAction(Icons.directions_car, '관광지 정보'),
-                  _buildQuickAction(Icons.school, '교통 안내'),
-                  _buildQuickAction(Icons.wb_sunny, '날씨 확인'),
+                  Expanded(child: _buildQuickAction(Icons.tips_and_updates, l10n.customRecommendations)),
+                  Expanded(child: _buildQuickAction(Icons.directions_car, l10n.touristInfo)),
+                  Expanded(child: _buildQuickAction(Icons.school, l10n.trafficInfo)),
+                  Expanded(child: _buildQuickAction(Icons.wb_sunny, l10n.weatherCheck)),
                 ],
               ),
             ),
@@ -883,7 +974,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return InkWell(
       onTap: () => _sendMessage(label),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -892,6 +983,9 @@ class _ChatScreenState extends State<ChatScreen> {
             Text(
               label,
               style: const TextStyle(fontSize: 11),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -900,15 +994,16 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _showClearHistoryDialog() {
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('채팅 기록 삭제'),
-        content: const Text('모든 채팅 기록을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.'),
+        title: Text(l10n.clearChatHistory),
+        content: Text('${l10n.deleteChatConfirm}\n${l10n.cannotUndo}'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('취소'),
+            child: Text(l10n.cancel),
           ),
           ElevatedButton(
             onPressed: () {
@@ -916,7 +1011,7 @@ class _ChatScreenState extends State<ChatScreen> {
               _clearChatHistory();
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('삭제', style: TextStyle(color: Colors.white)),
+            child: Text(l10n.clearChatHistory, style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
