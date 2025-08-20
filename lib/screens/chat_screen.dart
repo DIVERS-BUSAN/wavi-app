@@ -387,19 +387,23 @@ class _ChatScreenState extends State<ChatScreen> {
 다음 텍스트에서 일정 정보를 추출해주세요:
 "$text"
 
-다음 JSON 형식으로 응답해주세요:
+다음 JSON 형식으로 정확히 응답해주세요:
 {
   "title": "일정 제목",
   "description": "일정 설명 (없으면 null)",
   "datetime": "YYYY-MM-DD HH:mm 형식",
-  "location": "장소명 (없으면 null)",
+  "location": "구체적인 장소명 (예: 스타벅스 강남역점, 코엑스, 홍대입구역 등. 없으면 null)",
   "hasAlarm": true/false
 }
 
+중요한 규칙:
+1. datetime은 반드시 "YYYY-MM-DD HH:mm" 형식으로 작성하세요
+2. location은 가능한 구체적이고 검색 가능한 장소명으로 작성하세요
+3. "카페", "식당" 같은 일반적인 단어보다는 "스타벅스", "맥도날드" 같은 구체적인 이름을 선호하세요
+4. 응답은 오직 JSON 형식만 포함하고 다른 텍스트는 포함하지 마세요
+
 현재 시간: ${DateTime.now().toString()}
 오늘 날짜: ${DateFormat('yyyy-MM-dd').format(DateTime.now())}
-
-응답은 반드시 유효한 JSON 형식이어야 합니다.
 ''';
 
       final extractionMessages = [
@@ -431,7 +435,10 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       
       final jsonString = responseContent.substring(jsonStart, jsonEnd);
+      print('추출된 JSON: $jsonString');
+      
       final scheduleData = jsonDecode(jsonString);
+      print('파싱된 일정 데이터: $scheduleData');
       
       // 일정 생성
       final title = scheduleData['title'] ?? '새 일정';
@@ -439,6 +446,8 @@ class _ChatScreenState extends State<ChatScreen> {
       final datetimeStr = scheduleData['datetime'];
       final locationName = scheduleData['location'];
       final hasAlarm = scheduleData['hasAlarm'] ?? false;
+      
+      print('추출된 정보 - 제목: $title, 날짜: $datetimeStr, 장소: $locationName');
       
       if (datetimeStr == null) {
         throw Exception('날짜와 시간 정보가 필요합니다.');
@@ -449,8 +458,12 @@ class _ChatScreenState extends State<ChatScreen> {
       // Location 객체 생성 - 실제 장소 검색
       Location? location;
       if (locationName != null && locationName.isNotEmpty) {
+        print('장소 검색 시작: $locationName');
         location = await _searchKakaoPlace(locationName);
-        if (location == null) {
+        if (location != null) {
+          print('장소 검색 성공: ${location.name}, 위도: ${location.latitude}, 경도: ${location.longitude}');
+        } else {
+          print('장소 검색 실패, 이름만 저장: $locationName');
           // 장소를 찾지 못한 경우 이름만 저장
           location = Location(name: locationName);
         }
@@ -475,7 +488,8 @@ class _ChatScreenState extends State<ChatScreen> {
               '${location != null ? '📍 장소: ${location.name}\n' : ''}'
               '${location?.address != null ? '   주소: ${location!.address}\n' : ''}'
               '${description != null ? '📝 설명: $description\n' : ''}'
-              '${hasAlarm ? '⏰ 알림: 10분 전' : ''}',
+              '${hasAlarm ? '⏰ 알림: 10분 전' : ''}\n\n'
+              '💡 일정 화면이나 지도 화면으로 이동하시면 등록된 일정을 확인하실 수 있습니다.',
           type: MessageType.assistant,
         );
         
@@ -501,7 +515,13 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<Location?> _searchKakaoPlace(String query) async {
     try {
       final String restApiKey = dotenv.env['KAKAO_REST_API_KEY'] ?? '';
-      final String url = 'https://dapi.kakao.com/v2/local/search/keyword.json?query=$query&size=1';
+      if (restApiKey.isEmpty) {
+        print('카카오 REST API 키가 설정되지 않음');
+        return null;
+      }
+      
+      final String url = 'https://dapi.kakao.com/v2/local/search/keyword.json?query=${Uri.encodeComponent(query)}&size=1';
+      print('카카오 API 요청 URL: $url');
       
       final response = await http.get(
         Uri.parse(url),
@@ -510,25 +530,39 @@ class _ChatScreenState extends State<ChatScreen> {
         },
       );
       
+      print('카카오 API 응답 상태: ${response.statusCode}');
+      
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(utf8.decode(response.bodyBytes));
         final List<dynamic> documents = data['documents'];
         
+        print('검색 결과 개수: ${documents.length}');
+        
         if (documents.isNotEmpty) {
           final place = documents.first;
-          return Location(
+          print('검색된 장소 정보: ${place.toString()}');
+          
+          final location = Location(
             name: place['place_name'],
             address: place['road_address_name'] ?? place['address_name'],
             latitude: double.tryParse(place['y'].toString()),
             longitude: double.tryParse(place['x'].toString()),
           );
+          
+          print('생성된 Location 객체: ${location.name}, ${location.address}, ${location.latitude}, ${location.longitude}');
+          return location;
+        } else {
+          print('검색 결과 없음');
         }
+      } else {
+        print('카카오 API 오류: ${response.statusCode}, ${response.body}');
       }
     } catch (e) {
       print('카카오 장소 검색 오류: $e');
     }
     return null;
   }
+
 
   // 오류 응답
   Future<void> _respondWithError(String errorMessage) async {
