@@ -11,6 +11,7 @@ import 'l10n/app_localizations.dart';
 import 'package:kakao_map_plugin/kakao_map_plugin.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:kakao_flutter_sdk_common/kakao_flutter_sdk_common.dart';
 
 void main() async{
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,6 +20,13 @@ void main() async{
   await initializeDateFormatting('ko_KR', null);
   
   await dotenv.load(fileName: ".env");
+
+  //  Flutter SDK 초기화
+  KakaoSdk.init(
+    nativeAppKey: dotenv.env['KAKAO_NATIVE_APP_KEY']! ?? '',
+    javaScriptAppKey: dotenv.env['KAKAO_JS_APP_KEY']! ?? '',
+  );
+
   AuthRepository.initialize(
       appKey: dotenv.env['KAKAO_JS_APP_KEY']! ?? '',
       baseUrl: 'http://localhost'

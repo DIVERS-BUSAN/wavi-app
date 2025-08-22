@@ -57,6 +57,10 @@ abstract class AppLocalizations {
   String get searchLocation;
   String get navigate;
   String get scheduleLocation;
+  String get chooseTravelMode;
+  String get howToTravel;
+  String get walking;
+  String get driving;
   
   // Schedule screen
   String get scheduleTitle;

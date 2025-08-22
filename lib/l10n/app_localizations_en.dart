@@ -5,6 +5,18 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn() : super('en');
 
   @override
+  String get chooseTravelMode => 'Choose Travel Mode';
+
+  @override
+  String get howToTravel => 'How would you like to travel?';
+
+  @override
+  String get walking => 'Walking';
+
+  @override
+  String get driving => 'Driving';
+
+  @override
   String get mapTab => 'Map';
 
   @override

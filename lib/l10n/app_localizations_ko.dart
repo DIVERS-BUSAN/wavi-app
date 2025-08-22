@@ -5,6 +5,18 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo() : super('ko');
 
   @override
+  String get chooseTravelMode => '이동 수단 선택';
+
+  @override
+  String get howToTravel => '어떤 방법으로 이동하시겠습니까?';
+
+  @override
+  String get walking => '걷기';
+
+  @override
+  String get driving => '자동차';
+
+  @override
   String get mapTab => '지도';
 
   @override
