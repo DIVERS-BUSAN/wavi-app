@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class TourismService {
-  final String _baseUrl = "http://13.125.137.19:3000";
+  final String _baseUrl = "http://52.79.194.171:3000";
 
   Future<String> fetchTourismContext(String query) async {
     final response = await http.post(

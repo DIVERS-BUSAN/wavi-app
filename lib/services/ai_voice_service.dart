@@ -150,16 +150,4 @@ class AiVoiceService {
     return _isPlaying;
   }
 
-  // 음성 알림 테스트용
-  Future<void> testVoice() async {
-    await announceSchedule(Schedule(
-      id: 'test',
-      title: '테스트 일정',
-      dateTime: DateTime.now().add(const Duration(minutes: 30)),
-      location: Location(name: '테스트 장소'),
-      description: '이것은 AI 비서 음성 테스트입니다',
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    ));
-  }
 }

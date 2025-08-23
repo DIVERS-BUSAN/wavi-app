@@ -30,6 +30,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   // 위치 변수
   LatLng _cameraCenter =  LatLng(37.5665, 126.9780);
+  List<Polyline> _polylines = []; //폴리라인추가
   Location? _selectedLocation;
   Location? finalDestination;
   bool _isLoadingLocation = true;
@@ -95,6 +96,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     try {
       final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
+        if (!mounted) return; // ✅ mounted 체크
         setState(() => _isLoadingLocation = false);
         return;
       }
@@ -129,9 +131,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _mapController!.setLevel(4);
     }
 
-    final startIcon = await MarkerIcon.fromNetwork(
-      'https://maps.gstatic.com/mapfiles/ms2/micons/green-dot.png',
-    );
+    //final startIcon = await MarkerIcon.fromNetwork(
+    //  'https://maps.gstatic.com/mapfiles/ms2/micons/green-dot.png',
+    //);
+
+    if (!mounted) return; // ✅ 위젯이 살아있을 때만 실행
 
     setState(() {
       _currentLocationMarker = Marker(

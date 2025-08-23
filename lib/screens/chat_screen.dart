@@ -573,6 +573,7 @@ class _ChatScreenState extends State<ChatScreen> {
       final title = scheduleData['title'] ?? '새 일정';
       final description = scheduleData['description'];
       final datetimeStr = scheduleData['datetime'];
+      final EnddateTimeStr = scheduleData['EnddateTime'];
       final locationName = scheduleData['location'];
       final hasAlarm = scheduleData['hasAlarm'] ?? false;
 
@@ -583,6 +584,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
 
       final dateTime = DateTime.parse(datetimeStr.replaceAll(' ', 'T'));
+      final EnddateTime = DateTime.parse(EnddateTimeStr.replaceAll(' ', 'T'));
 
       // Location 객체 생성 - 실제 장소 검색
       Location? location;
@@ -616,6 +618,7 @@ class _ChatScreenState extends State<ChatScreen> {
         title: title,
         description: description,
         dateTime: dateTime,
+        EnddateTime: EnddateTime,
         location: location,
         isAlarmEnabled: hasAlarm,
         alarmDateTime: hasAlarm

@@ -11,6 +11,7 @@ import '../services/notification_service.dart';
 import '../providers/language_provider.dart';
 import '../l10n/app_localizations.dart';
 
+
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({super.key});
 
@@ -65,22 +66,34 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     // 일정을 날짜별로 그룹핑
     final Map<DateTime, List<Schedule>> events = {};
     for (final schedule in schedules) {
-      final date = DateTime(
+      final startDate = DateTime(
         schedule.dateTime.year,
         schedule.dateTime.month,
         schedule.dateTime.day,
       );
-      
-      if (events[date] == null) {
-        events[date] = [];
+      final endDate = DateTime(
+        schedule.EnddateTime.year,
+        schedule.EnddateTime.month,
+        schedule.EnddateTime.day,
+      );
+
+      // 시작 날짜에 추가
+      events.putIfAbsent(startDate, () => []);
+      events[startDate]!.add(schedule);
+
+      // 종료 날짜가 다르면 종료 날짜에도 추가
+      if (endDate != startDate) {
+        events.putIfAbsent(endDate, () => []);
+        events[endDate]!.add(schedule);
       }
-      events[date]!.add(schedule);
     }
     
     setState(() {
       _events = events;
       _isLoading = false;
     });
+    print("📌 _events keys: ${_events.keys}");
+    print("📌 $_selectedDay 의 일정: ${_getEventsForDay(_selectedDay!).map((e)=>e.toJson()).toList()}");
 
     // 선택된 날의 이벤트 업데이트
     _selectedEvents.value = _getEventsForDay(_selectedDay!);
@@ -322,6 +335,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     required bool isFirst,
     required bool isLast,
   }) {
+    final isTravel = !schedule.isEvent; // 이동 일정 구분
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -338,19 +353,22 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: Color(schedule.color.colorValue),
+                color: isTravel ? Colors.orange : Color(schedule.color.colorValue),
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white, width: 3),
                 boxShadow: [
                   BoxShadow(
-                    color: Color(schedule.color.colorValue).withOpacity(0.3),
+                    color: (isTravel ? Colors.orange : Color(schedule.color.colorValue))
+                        .withOpacity(0.3),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
                 ],
               ),
               child: Center(
-                child: Text(
+                child: isTravel
+                    ? const Icon(Icons.directions_car, color: Colors.white, size: 18) // 🚗 아이콘
+                    : Text(
                   '$index',
                   style: const TextStyle(
                     color: Colors.white,
@@ -374,6 +392,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           child: Container(
             margin: const EdgeInsets.only(bottom: 16),
             child: Card(
+              color: isTravel ? Colors.orange.withOpacity(0.1) : null, // 이동 일정 배경 강조
               elevation: 2,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: InkWell(
@@ -389,7 +408,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: Color(schedule.color.colorValue).withOpacity(0.1),
+                              color: (isTravel ? Colors.orange : Color(schedule.color.colorValue))
+                                  .withOpacity(0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
@@ -397,7 +417,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
-                                color: Color(schedule.color.colorValue),
+                                color: isTravel ? Colors.orange : Color(schedule.color.colorValue),
                               ),
                             ),
                           ),
@@ -405,52 +425,57 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                           if (schedule.isAlarmEnabled)
                             Icon(Icons.alarm, size: 16, color: Colors.blue[600]),
                           const Spacer(),
-                          PopupMenuButton(
-                            itemBuilder: (context) => [
-                              PopupMenuItem(
-                                value: 'edit',
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.edit, size: 18),
-                                    const SizedBox(width: 8),
-                                    Text(AppLocalizations.of(context).edit),
-                                  ],
+                          if (!isTravel) // 🚫 이동 일정에는 수정/삭제 메뉴 제거
+                            PopupMenuButton(
+                              itemBuilder: (context) => [
+                                PopupMenuItem(
+                                  value: 'edit',
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.edit, size: 18),
+                                      const SizedBox(width: 8),
+                                      Text(AppLocalizations.of(context).edit),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              PopupMenuItem(
-                                value: 'delete',
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.delete, size: 18, color: Colors.red),
-                                    const SizedBox(width: 8),
-                                    Text(AppLocalizations.of(context).delete, style: const TextStyle(color: Colors.red)),
-                                  ],
+                                PopupMenuItem(
+                                  value: 'delete',
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.delete, size: 18, color: Colors.red),
+                                      const SizedBox(width: 8),
+                                      Text(AppLocalizations.of(context).delete,
+                                          style: const TextStyle(color: Colors.red)),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
-                            onSelected: (value) {
-                              if (value == 'delete') {
-                                _showDeleteConfirmDialog(schedule.id);
-                              } else if (value == 'edit') {
-                                _showEditScheduleDialog(schedule);
-                              }
-                            },
-                          ),
+                              ],
+                              onSelected: (value) {
+                                if (value == 'delete') {
+                                  _showDeleteConfirmDialog(schedule.id);
+                                } else if (value == 'edit') {
+                                  _showEditScheduleDialog(schedule);
+                                }
+                              },
+                            ),
                         ],
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        schedule.title,
-                        style: const TextStyle(
+                        isTravel ? "[이동] ${schedule.title}" : schedule.title,
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
+                          color: isTravel ? Colors.orange[800] : Colors.black,
                         ),
                       ),
                       if (schedule.location != null) ...[
                         const SizedBox(height: 8),
                         Row(
                           children: [
-                            Icon(Icons.location_on, size: 16, color: Colors.red[600]),
+                            Icon(Icons.location_on,
+                                size: 16,
+                                color: isTravel ? Colors.orange[700] : Colors.red[600]),
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
@@ -487,6 +512,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       ],
     );
   }
+
 
   Widget _buildScheduleCard(Schedule schedule) {
     final isUpcoming = schedule.dateTime.isAfter(DateTime.now());
@@ -718,6 +744,7 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
   final NotificationService _notificationService = NotificationService();
 
   DateTime _selectedDateTime = DateTime.now();
+  DateTime _selectedEndDateTime = DateTime.now();
   bool _isAlarmEnabled = false;
   NotificationOption _selectedNotificationOption = NotificationService.notificationOptions[0];
   bool _isAiVoiceEnabled = false;
@@ -731,6 +758,7 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
       _titleController.text = widget.schedule!.title;
       _descriptionController.text = widget.schedule!.description ?? '';
       _selectedDateTime = widget.schedule!.dateTime;
+      _selectedEndDateTime = widget.schedule!.EnddateTime;
       _isAlarmEnabled = widget.schedule!.isAlarmEnabled;
       _isAiVoiceEnabled = widget.schedule!.isAiVoiceEnabled;
       _selectedLocation = widget.schedule!.location;
@@ -753,6 +781,7 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
         now.hour,
         now.minute,
       );
+      _selectedEndDateTime = _selectedDateTime.add(const Duration(hours: 1)); // ✅ 종료시간 기본값
     }
   }
 
@@ -791,6 +820,34 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
     }
   }
 
+  Future<void> _selectEndDateTime() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _selectedEndDateTime,
+      firstDate: _selectedDateTime, // 시작시간 이후로 제한
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+
+    if (date != null && mounted) {
+      final time = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(_selectedEndDateTime),
+      );
+
+      if (time != null) {
+        setState(() {
+          _selectedEndDateTime = DateTime(
+            date.year,
+            date.month,
+            date.day,
+            time.hour,
+            time.minute,
+          );
+        });
+      }
+    }
+  }
+
   DateTime? _calculateAlarmDateTime() {
     if (!_isAlarmEnabled) return null;
     
@@ -814,6 +871,7 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
             ? _descriptionController.text
             : null,
         dateTime: _selectedDateTime,
+        EnddateTime: _selectedEndDateTime,
         location: _selectedLocation,
         isAlarmEnabled: _isAlarmEnabled,
         alarmDateTime: alarmDateTime,
@@ -920,6 +978,22 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
                     ),
                     child: Text(
                       DateFormat(context.read<LanguageProvider>().isEnglish ? 'MMM dd yyyy HH:mm' : 'yyyy년 MM월 dd일 HH:mm').format(_selectedDateTime),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: _selectEndDateTime,
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: '${l10n.dateAndTime}${l10n.required}',
+                      border: const OutlineInputBorder(),
+                    ),
+                    child: Text(
+                      DateFormat(context.read<LanguageProvider>().isEnglish
+                          ? 'MMM dd yyyy HH:mm'
+                          : 'yyyy년 MM월 dd일 HH:mm'
+                      ).format(_selectedEndDateTime),
                     ),
                   ),
                 ),

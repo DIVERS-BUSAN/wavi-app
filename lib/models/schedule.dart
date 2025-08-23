@@ -2,7 +2,8 @@ class Schedule {
   final String id;
   final String title;
   final String? description;
-  final DateTime dateTime;
+  final DateTime dateTime; //시작시간
+  final DateTime EnddateTime; //끝나는 시간
   final Location? location;
   final bool isAlarmEnabled;
   final DateTime? alarmDateTime;
@@ -10,12 +11,14 @@ class Schedule {
   final ScheduleColor color;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final bool isEvent;
 
   Schedule({
     required this.id,
     required this.title,
     this.description,
     required this.dateTime,
+    required this.EnddateTime,
     this.location,
     this.isAlarmEnabled = false,
     this.alarmDateTime,
@@ -23,6 +26,7 @@ class Schedule {
     this.color = ScheduleColor.blue,
     required this.createdAt,
     required this.updatedAt,
+    this.isEvent = true,
   });
 
   Map<String, dynamic> toJson() {
@@ -31,6 +35,7 @@ class Schedule {
       'title': title,
       'description': description,
       'dateTime': dateTime.millisecondsSinceEpoch,
+      'EnddateTime': EnddateTime.millisecondsSinceEpoch,
       'location': location?.toJson(),
       'isAlarmEnabled': isAlarmEnabled,
       'alarmDateTime': alarmDateTime?.millisecondsSinceEpoch,
@@ -38,6 +43,7 @@ class Schedule {
       'color': color.name,
       'createdAt': createdAt.millisecondsSinceEpoch,
       'updatedAt': updatedAt.millisecondsSinceEpoch,
+      'isEvent': isEvent
     };
   }
 
@@ -47,26 +53,32 @@ class Schedule {
       title: json['title'],
       description: json['description'],
       dateTime: DateTime.fromMillisecondsSinceEpoch(json['dateTime']),
+      EnddateTime: json['EnddateTime'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(json['EnddateTime'])
+          : DateTime.fromMillisecondsSinceEpoch(json['dateTime']), // 시작시간 기본
       location: json['location'] != null ? Location.fromJson(json['location']) : null,
       isAlarmEnabled: json['isAlarmEnabled'] ?? false,
-      alarmDateTime: json['alarmDateTime'] != null 
+      alarmDateTime: json['alarmDateTime'] != null
           ? DateTime.fromMillisecondsSinceEpoch(json['alarmDateTime'])
           : null,
       isAiVoiceEnabled: json['isAiVoiceEnabled'] ?? false,
       color: ScheduleColor.values.firstWhere(
-        (c) => c.name == json['color'],
+            (c) => c.name == json['color'],
         orElse: () => ScheduleColor.blue,
       ),
       createdAt: DateTime.fromMillisecondsSinceEpoch(json['createdAt']),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(json['updatedAt']),
+      isEvent: json['isEvent'] ?? true, // ✅ 일반 일정 기본 true, 이동일정은 false 저장됨
     );
   }
+
 
   Schedule copyWith({
     String? id,
     String? title,
     String? description,
     DateTime? dateTime,
+    DateTime? EnddateTime,
     Location? location,
     bool? isAlarmEnabled,
     DateTime? alarmDateTime,
@@ -74,12 +86,14 @@ class Schedule {
     ScheduleColor? color,
     DateTime? createdAt,
     DateTime? updatedAt,
+    bool? isEvent,
   }) {
     return Schedule(
       id: id ?? this.id,
       title: title ?? this.title,
       description: description ?? this.description,
       dateTime: dateTime ?? this.dateTime,
+      EnddateTime: dateTime ?? this.EnddateTime,
       location: location ?? this.location,
       isAlarmEnabled: isAlarmEnabled ?? this.isAlarmEnabled,
       alarmDateTime: alarmDateTime ?? this.alarmDateTime,
@@ -87,6 +101,7 @@ class Schedule {
       color: color ?? this.color,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      isEvent: isEvent ?? this.isEvent,
     );
   }
 }

@@ -80,6 +80,7 @@ class NotificationService {
           id: response.payload!,
           title: '알림을 확인해주세요',
           dateTime: DateTime.now(),
+          EnddateTime: DateTime.now(),
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
         ));
