@@ -1,0 +1,21 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
+class TourismService {
+  final String _baseUrl = "http://13.125.137.19:3000";
+
+  Future<String> fetchTourismContext(String query) async {
+    final response = await http.post(
+      Uri.parse("$_baseUrl/rag"),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode({"message": query}),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data["context"] ?? "";
+    } else {
+      throw Exception("RAG 서버 오류: ${response.statusCode}");
+    }
+  }
+}

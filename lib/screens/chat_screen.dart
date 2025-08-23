@@ -8,6 +8,7 @@ import '../models/chat_message.dart';
 import '../services/openai_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import '../services/tourism_service.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -21,6 +22,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
   final OpenAIService _openAIService = OpenAIService();
+  final TourismService _tourismService = TourismService();
   
   static const String _messagesKey = 'chat_messages';
   
@@ -294,10 +296,21 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  String removeEmojis(String input) {
+    final emojiRegex = RegExp(
+      r'[\u{1F600}-\u{1F64F}' // Emoticons
+      r'\u{1F300}-\u{1F5FF}' // Symbols & pictographs
+      r'\u{1F680}-\u{1F6FF}' // Transport & map
+      r'\u{2600}-\u{26FF}'   // Misc symbols
+      r'\u{2700}-\u{27BF}]', // Dingbats
+      unicode: true,
+    );
+    return input.replaceAll(emojiRegex, '');
+  }
+
   void _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
-    // 사용자 메시지 추가
     final userMessage = ChatMessage(
       content: text,
       type: MessageType.user,
@@ -313,17 +326,35 @@ class _ChatScreenState extends State<ChatScreen> {
     _saveChatHistory();
 
     try {
-      // OpenAI API 호출
-      final response = await _openAIService.sendMessage(_messages);
-      
+      // 1️⃣ intent 분류
+      final intent = await _openAIService.classifyIntent(text);
+      ChatMessage? response;
+
+      if (intent == "tourism") {
+        // 2️⃣ 관광 질문이면 RAG 서버에서 context 가져오기
+        final context = await _tourismService.fetchTourismContext(text);
+
+        // 3️⃣ context + 질문을 GPT에 전달
+        response = await _openAIService.sendMessage([
+          ChatMessage(
+            content: "사용자 질문: $text\n\n참조 데이터: $context\n\n이 정보를 바탕으로 친절하게 답변해줘.",
+            type: MessageType.user,
+          )
+        ]);
+      } else {
+        // 4️⃣ 일반 대화면 기존 방식
+        response = await _openAIService.sendMessage(_messages);
+      }
+
       if (response != null) {
         setState(() {
-          _messages.add(response);
+          _messages.add(response!);
           _isTyping = false;
         });
 
-        // TTS로 응답 읽기
-        var result = await _flutterTts.speak(response.content);
+        // TTS
+        final cleanText = removeEmojis(response.content);
+        var result = await _flutterTts.speak(cleanText);
         if (result == 1) {
           print("TTS Speaking: ${response.content}");
         } else {
@@ -334,22 +365,20 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } catch (e) {
       print('OpenAI API 오류: $e');
-      
-      // 오류 발생시 기본 응답
+
       final errorMessage = ChatMessage(
         content: '죄송합니다. 현재 서버에 문제가 있어 응답할 수 없습니다. 잠시 후 다시 시도해주세요.\n\n오류: ${e.toString()}',
         type: MessageType.assistant,
       );
-      
+
       setState(() {
         _messages.add(errorMessage);
         _isTyping = false;
       });
-      
-      // 오류 메시지도 TTS로 읽기
+
       await _flutterTts.speak('죄송합니다. 현재 서버에 문제가 있어 응답할 수 없습니다.');
     }
-    
+
     _scrollToBottom();
     _saveChatHistory();
   }
