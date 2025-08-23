@@ -17,6 +17,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:convert';
 import '../services/tourism_service.dart';
+import '../widgets/location_selection_dialog.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -587,11 +588,22 @@ class _ChatScreenState extends State<ChatScreen> {
       Location? location;
       if (locationName != null && locationName.isNotEmpty) {
         print('장소 검색 시작: $locationName');
-        location = await _searchKakaoPlace(locationName);
-        if (location != null) {
-          print(
-            '장소 검색 성공: ${location.name}, 위도: ${location.latitude}, 경도: ${location.longitude}',
-          );
+        final searchResults = await _searchKakaoPlaces(locationName, limit: 5);
+        
+        if (searchResults.isNotEmpty) {
+          // 여러 위치가 검색된 경우 사용자에게 선택하게 함
+          if (searchResults.length > 1) {
+            location = await _showLocationSelectionDialog(searchResults, locationName);
+          } else {
+            // 하나만 검색된 경우 바로 사용
+            location = searchResults.first;
+          }
+          
+          if (location != null) {
+            print(
+              '선택된 장소: ${location.name}, 위도: ${location.latitude}, 경도: ${location.longitude}',
+            );
+          }
         } else {
           print('장소 검색 실패, 이름만 저장: $locationName');
           // 장소를 찾지 못한 경우 이름만 저장
@@ -646,7 +658,82 @@ class _ChatScreenState extends State<ChatScreen> {
     _saveChatHistory();
   }
 
-  // 카카오 장소 검색
+  // 위치 선택 다이얼로그 표시
+  Future<Location?> _showLocationSelectionDialog(
+    List<Location> locations,
+    String originalLocationName,
+  ) async {
+    if (!mounted) return null;
+    
+    return await showDialog<Location?>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return LocationSelectionDialog(
+          locationOptions: locations,
+          originalLocationName: originalLocationName,
+          onLocationSelected: (Location? selectedLocation) {
+            // 이 콜백은 더 이상 사용하지 않음 - pop으로 직접 처리
+          },
+        );
+      },
+    );
+  }
+
+  // 카카오 장소 검색 (여러 결과 반환)
+  Future<List<Location>> _searchKakaoPlaces(String query, {int limit = 5}) async {
+    final List<Location> results = [];
+    
+    try {
+      final String restApiKey = dotenv.env['KAKAO_REST_API_KEY'] ?? '';
+      if (restApiKey.isEmpty) {
+        print('카카오 REST API 키가 설정되지 않음');
+        return results;
+      }
+
+      final String url =
+          'https://dapi.kakao.com/v2/local/search/keyword.json?query=${Uri.encodeComponent(query)}&size=$limit';
+      print('카카오 API 요청 URL: $url');
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {'Authorization': 'KakaoAK $restApiKey'},
+      );
+
+      print('카카오 API 응답 상태: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(
+          utf8.decode(response.bodyBytes),
+        );
+        final List<dynamic> documents = data['documents'];
+
+        print('검색 결과 개수: ${documents.length}');
+
+        for (final place in documents) {
+          final location = Location(
+            name: place['place_name'],
+            address: place['road_address_name'] ?? place['address_name'],
+            latitude: double.tryParse(place['y'].toString()),
+            longitude: double.tryParse(place['x'].toString()),
+          );
+          
+          results.add(location);
+          print(
+            '검색된 장소: ${location.name}, ${location.address}, ${location.latitude}, ${location.longitude}',
+          );
+        }
+      } else {
+        print('카카오 API 오류: ${response.statusCode}, ${response.body}');
+      }
+    } catch (e) {
+      print('장소 검색 중 오류: $e');
+    }
+
+    return results;
+  }
+
+  // 단일 카카오 장소 검색 (기존 호환성 유지)
   Future<Location?> _searchKakaoPlace(String query) async {
     try {
       final String restApiKey = dotenv.env['KAKAO_REST_API_KEY'] ?? '';
@@ -667,31 +754,8 @@ class _ChatScreenState extends State<ChatScreen> {
       print('카카오 API 응답 상태: ${response.statusCode}');
 
       if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(
-          utf8.decode(response.bodyBytes),
-        );
-        final List<dynamic> documents = data['documents'];
-
-        print('검색 결과 개수: ${documents.length}');
-
-        if (documents.isNotEmpty) {
-          final place = documents.first;
-          print('검색된 장소 정보: ${place.toString()}');
-
-          final location = Location(
-            name: place['place_name'],
-            address: place['road_address_name'] ?? place['address_name'],
-            latitude: double.tryParse(place['y'].toString()),
-            longitude: double.tryParse(place['x'].toString()),
-          );
-
-          print(
-            '생성된 Location 객체: ${location.name}, ${location.address}, ${location.latitude}, ${location.longitude}',
-          );
-          return location;
-        } else {
-          print('검색 결과 없음');
-        }
+        final results = await _searchKakaoPlaces(query, limit: 1);
+        return results.isNotEmpty ? results.first : null;
       } else {
         print('카카오 API 오류: ${response.statusCode}, ${response.body}');
       }
