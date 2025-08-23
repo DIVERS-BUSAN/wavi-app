@@ -70,13 +70,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       margin: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(25),
                       ),
                       child: TabBar(
                         indicatorSize: TabBarIndicatorSize.tab,
                         indicator: const BoxDecoration(
                           color: Colors.orange,
-                          borderRadius: BorderRadius.all(Radius.circular(25)),
                         ),
                         labelColor: Colors.white,
                         unselectedLabelColor: Colors.grey,
