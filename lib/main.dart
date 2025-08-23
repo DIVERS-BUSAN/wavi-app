@@ -8,6 +8,7 @@ import 'screens/profile_screen.dart';
 import 'services/notification_service.dart';
 import 'providers/language_provider.dart';
 import 'l10n/app_localizations.dart';
+import 'utils/toast_utils.dart';
 import 'package:kakao_map_plugin/kakao_map_plugin.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -52,6 +53,7 @@ class WaviApp extends StatelessWidget {
       builder: (context, languageProvider, child) {
         return MaterialApp(
           title: 'WAVI',
+          navigatorKey: NavigationService.navigatorKey,
           theme: ThemeData(
             colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF041E42)),
             useMaterial3: true,

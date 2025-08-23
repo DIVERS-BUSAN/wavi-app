@@ -264,7 +264,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _toggleListening() async {
     if (!_speechEnabled) {
       final l10n = AppLocalizations.of(context);
-      ToastUtils.showError(l10n.micPermissionRequired);
+      ToastUtils.showError(l10n.micPermissionRequired, context: context);
       return;
     }
 
@@ -326,9 +326,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
       final l10n = AppLocalizations.of(context);
       if (_voiceChatMode) {
-        ToastUtils.showInfo(l10n.voiceChatModeStarted);
+        ToastUtils.showInfo(l10n.voiceChatModeStarted, context: context);
       } else {
-        ToastUtils.showInfo(l10n.listeningToVoice);
+        ToastUtils.showInfo(l10n.listeningToVoice, context: context);
       }
     } catch (e) {
       print('Start listening error: $e');
@@ -783,7 +783,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _addWelcomeMessage();
 
       final l10n = AppLocalizations.of(context);
-      ToastUtils.showSuccess(l10n.chatHistoryDeleted);
+      ToastUtils.showSuccess(l10n.chatHistoryDeleted, context: context);
     } catch (e) {
       print('채팅 기록 삭제 실패: $e');
     }
