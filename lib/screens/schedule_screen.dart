@@ -391,7 +391,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           child: Container(
             margin: const EdgeInsets.only(bottom: 16),
             child: Card(
-              color: isTravel ? Colors.orange.withOpacity(0.1) : null, // 이동 일정 배경 강조
+              color: isTravel ? Colors.orange.shade50 : null, // 이동 일정 배경 강조
               elevation: 2,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               child: InkWell(
@@ -412,7 +412,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              DateFormat('HH:mm').format(schedule.dateTime),
+                              '${DateFormat('HH:mm').format(schedule.dateTime)} ~ ${DateFormat('HH:mm').format(schedule.EnddateTime)}',
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,

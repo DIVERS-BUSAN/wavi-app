@@ -43,7 +43,7 @@ class Schedule {
       'color': color.name,
       'createdAt': createdAt.millisecondsSinceEpoch,
       'updatedAt': updatedAt.millisecondsSinceEpoch,
-      'isEvent': isEvent
+      'isEvent': isEvent,
     };
   }
 
@@ -56,14 +56,16 @@ class Schedule {
       EnddateTime: json['EnddateTime'] != null
           ? DateTime.fromMillisecondsSinceEpoch(json['EnddateTime'])
           : DateTime.fromMillisecondsSinceEpoch(json['dateTime']), // 시작시간 기본
-      location: json['location'] != null ? Location.fromJson(json['location']) : null,
+      location: json['location'] != null
+          ? Location.fromJson(json['location'])
+          : null,
       isAlarmEnabled: json['isAlarmEnabled'] ?? false,
       alarmDateTime: json['alarmDateTime'] != null
           ? DateTime.fromMillisecondsSinceEpoch(json['alarmDateTime'])
           : null,
       isAiVoiceEnabled: json['isAiVoiceEnabled'] ?? false,
       color: ScheduleColor.values.firstWhere(
-            (c) => c.name == json['color'],
+        (c) => c.name == json['color'],
         orElse: () => ScheduleColor.blue,
       ),
       createdAt: DateTime.fromMillisecondsSinceEpoch(json['createdAt']),
@@ -71,7 +73,6 @@ class Schedule {
       isEvent: json['isEvent'] ?? true, // ✅ 일반 일정 기본 true, 이동일정은 false 저장됨
     );
   }
-
 
   Schedule copyWith({
     String? id,
@@ -112,12 +113,7 @@ class Location {
   final double? latitude;
   final double? longitude;
 
-  Location({
-    required this.name,
-    this.address,
-    this.latitude,
-    this.longitude,
-  });
+  Location({required this.name, this.address, this.latitude, this.longitude});
 
   Map<String, dynamic> toJson() {
     return {
@@ -174,7 +170,7 @@ enum ScheduleColor {
   blueGrey('청회색', 0xFF90CAF9);
 
   const ScheduleColor(this.displayName, this.colorValue);
-  
+
   final String displayName;
   final int colorValue;
 }
