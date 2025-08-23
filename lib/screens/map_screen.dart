@@ -112,15 +112,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     final LatLng me = LatLng(position.latitude, position.longitude);
     print("현재 위치 : ${me}");
 
-    setState(() async{
+    setState(() {
       _currentLocationMarker = Marker(
         markerId: 'me',
         latLng: me,
       );
       _isLoadingLocation = false;
-
-      await _mapController!.setCenter(me);
-      _mapController!.setLevel(4);
     });
 
     if (_mapController != null) {
@@ -141,7 +138,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     return result;
   }
 
-  Future<void> loadSchedules() async {
+  Future<void> loadSchedules({bool forceShowDateSchedules = false}) async {
     final schedules = await _scheduleService.getAllSchedules();
     
     // 장소가 있는 일정만 필터링
@@ -152,7 +149,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     ).toList();
     
     // 날짜 필터 적용
-    if (_showDateSchedules) {
+    if (_showDateSchedules || forceShowDateSchedules) {
       schedulesWithLocation = schedulesWithLocation.where((schedule) {
         return schedule.dateTime.year == _selectedDate.year &&
                schedule.dateTime.month == _selectedDate.month &&
@@ -664,7 +661,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           ),
           // 날짜 선택 및 일정 표시 컨트롤
           Positioned(
-            bottom: 40, // WAVI 버튼과 겹치지 않도록 높이 조정
+            bottom: 50, // WAVI 버튼과 겹치지 않도록 높이 조정
             left: 16,
             right: 16,
             child: Container(
@@ -700,7 +697,14 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
                             if (pickedDate == null) return;
 
-                            await loadSchedules();
+                            // 먼저 날짜와 상태를 설정
+                            setState(() {
+                              _selectedDate = pickedDate;
+                              _showDateSchedules = true;
+                            });
+                            
+                            // 그 다음 일정을 로드
+                            await loadSchedules(forceShowDateSchedules: true);
                             allSchedules = [];
                             viaList = [];
 
@@ -729,13 +733,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                                 viaList.add(kakao);
                                 allSchedules.add(waypoint);
                               }
+                              
+                              setState(() {
+                                _routenavigation = true;
+                              });
                             }
-
-                            setState(() {
-                              _selectedDate = pickedDate;
-                              _showDateSchedules = true;
-                              _routenavigation = true;
-                            });
 
                             if (_mapController != null && allSchedules.isNotEmpty) {
                               List<LatLng> bounds = allSchedules.map((location) {
@@ -765,32 +767,34 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                       Switch(
                         value: _showDateSchedules,
                         onChanged: (value) async {
-                          setState(()  {
-                            _showDateSchedules = value;
+                          setState(() {
+                            _showDateSchedules = value ?? false;
                           });
-                          if (value) {
-                            await loadSchedules();
-                            _showDateSchedules = true;
+                          
+                          if (value ?? false) {
+                            await loadSchedules(forceShowDateSchedules: true);
+                            
+                            setState(() {
+                              // 화면 조정
+                              if (_mapController != null && allSchedules.isNotEmpty) {
+                                List<LatLng> bounds = allSchedules.map((location) {
+                                  return LatLng(location.latitude!, location.longitude!);
+                                }).toList();
 
-                              setState(() {
-                                //화면 조정
-                                if (_mapController != null) {
-                                  List<LatLng> bounds = allSchedules.map((location) {
-                                    return LatLng(location.latitude!, location.longitude!);
-                                  }).toList();
-
-                                  if (bounds.isNotEmpty) {
+                                if (bounds.isNotEmpty) {
                                   _mapController!.fitBounds(bounds);
-                                  }
                                 }
-                              });
-                              if(finalDestination != null)
+                              }
+                              
+                              if (finalDestination != null) {
                                 _routenavigation = true;
+                              }
+                            });
                           } else {
-                            //viaList = [];
-                            //finalDestination = null;
-                            //allSchedules.clear();
-                            _routenavigation = false;
+                            await loadSchedules(); // 모든 일정 표시
+                            setState(() {
+                              _routenavigation = false;
+                            });
                           }
                         },
                         activeColor: Colors.green,
@@ -820,20 +824,31 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          const Spacer(),
-                          Flexible(
-                            child: TextButton.icon(
+                          const SizedBox(width: 70),
+                          TextButton.icon(
+                            onPressed: () {
+                              // 일정 목록 보기
+                              _showSchedulesList();
+                            },
+                            icon: Icon(Icons.list, size: 16, color: Colors.green[700]),
+                            label: Text(
+                              l10n.listView,
+                              style: TextStyle(fontSize: 13, color: Colors.green[700]),
+                            ),
+                          ),
+                          if (finalDestination != null) ...[
+                            const SizedBox(width: 8),
+                            TextButton.icon(
                               onPressed: () {
-                                // 일정 목록 보기
-                                _showSchedulesList();
+                                _showTravelModeDialog(finalDestination!);
                               },
-                              icon: Icon(Icons.list, size: 16, color: Colors.green[700]),
+                              icon: Icon(Icons.directions, size: 16, color: Colors.green[700]),
                               label: Text(
-                                l10n.listView,
+                                '길찾기',
                                 style: TextStyle(fontSize: 13, color: Colors.green[700]),
                               ),
                             ),
-                          ),
+                          ],
                         ],
                       ),
                     ),
@@ -842,19 +857,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
               ),
             ),
           ),
-            // 길안내
-            if(_routenavigation)
-              Positioned(
-                  bottom: 190,
-                  left: 55,
-                  right: 90,
-                  child: FloatingActionButton(
-                    child: Text('길찾기'),
-                      onPressed: (){
-                      _showTravelModeDialog(finalDestination!);
-                      }
-                  )
-              )
           ],
         ),
       ),
