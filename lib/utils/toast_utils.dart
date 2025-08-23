@@ -81,8 +81,8 @@ class _CustomToastDialogState extends State<_CustomToastDialog>
 
     _controller.forward();
 
-    // 5초 후 자동 닫기
-    Future.delayed(const Duration(seconds: 5), () {
+    // 2초 후 자동 닫기
+    Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
         _dismiss();
       }
