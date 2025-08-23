@@ -3,12 +3,19 @@ import 'package:provider/provider.dart';
 import 'package:kakao_map_plugin/kakao_map_plugin.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../models/placedetail.dart';
 import '../models/schedule.dart';
 import '../widgets/location_picker.dart';
 import '../services/schedule_service.dart';
 import '../providers/language_provider.dart';
 import '../l10n/app_localizations.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:intl/intl.dart';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+import 'package:flutter/services.dart' show NetworkAssetBundle;
 import 'package:kakao_flutter_sdk_navi/kakao_flutter_sdk_navi.dart'as kakao_navi;
 
 class MapScreen extends StatefulWidget {
@@ -36,7 +43,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   List<kakao_navi.Location> viaList = [];
 
   // 일정 관련 변수
-  final ScheduleService _scheduleService = ScheduleService();
+  ScheduleService _scheduleService = ScheduleService();
   List<Schedule> _schedules = [];
   List<Marker> _scheduleMarkers = [];
   DateTime _selectedDate = DateTime.now();
@@ -49,6 +56,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   // 루트 경로 여부
   bool _routenavigation = false;
+
+  // 스프라이트 원본 URL (카카오 공식 문서 이미지)
+  static const _spriteUrl = 'https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_number_blue.png';
+  // 캐시용
+  ui.Image? _spriteImage;
 
   @override
   void initState() {
@@ -108,9 +120,18 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _getCurrentLocation() async{
-    final Position position = await Geolocator.getCurrentPosition();
-    final LatLng me = LatLng(position.latitude, position.longitude);
+    Position position = await Geolocator.getCurrentPosition();
+    LatLng me = LatLng(position.latitude, position.longitude);
     print("현재 위치 : ${me}");
+
+    if (_mapController != null) {
+      await _mapController!.setCenter(me);
+      _mapController!.setLevel(4);
+    }
+
+    final startIcon = await MarkerIcon.fromNetwork(
+      'https://maps.gstatic.com/mapfiles/ms2/micons/green-dot.png',
+    );
 
     setState(() {
       _currentLocationMarker = Marker(
@@ -120,12 +141,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       _isLoadingLocation = false;
     });
 
-    if (_mapController != null) {
-      await _mapController!.setCenter(me);
-      _mapController!.setLevel(4);
-    }
   }
-
   Future<kakao_navi.Location> to_kakao(Location location) async {
     kakao_navi.Location result;
 
@@ -159,26 +175,87 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       // 시간순 정렬
       schedulesWithLocation.sort((a, b) => a.dateTime.compareTo(b.dateTime));
     }
-    
+
+    var markers = await _createScheduleMarkers(schedulesWithLocation);
+
     setState(() {
       _schedules = schedulesWithLocation;
-      _scheduleMarkers = _createScheduleMarkers();
+      _scheduleMarkers = markers;
     });
   }
 
-  List<Marker> _createScheduleMarkers() {
-    return _schedules.asMap().entries.map((entry) {
-      final index = entry.key;
-      final schedule = entry.value;
-      
-      return Marker(
-        markerId: 'schedule_${schedule.id}',
-        latLng: LatLng(
-          schedule.location!.latitude!,
-          schedule.location!.longitude!,
-        ),
-      );
-    }).toList();
+  Future<List<Marker>> _createScheduleMarkers(List<Schedule> list) async {
+    List<Marker> markers = [];
+
+    for (int i = 0; i < list.length; i++) {
+      var schedule = list[i];
+      var lat = schedule.location!.latitude!;
+      var lng = schedule.location!.longitude!;
+
+      if (i == list.length - 1) {
+        //도착지
+        markers.add(
+          Marker(
+              markerId: 'schedule_${schedule.id}',
+              latLng: LatLng(lat, lng),
+              markerImageSrc: 'http://t1.daumcdn.net/localimg/localimages/07/mapapidoc/markerStar.png',
+              width: 24,
+              height: 32
+          ),
+        );
+      } else {
+        final dataUrl = await _numberMarkerDataUrl(i);
+        //경유지
+        markers.add(
+          Marker(
+              markerId: 'schedule_${schedule.id}',
+              latLng: LatLng(lat, lng),
+              markerImageSrc: dataUrl,
+              width: 35,
+              height: 35
+          ),
+        );
+      }
+    }
+
+    return markers;
+  }
+
+  /// 특정 index의 숫자 마커 아이콘 잘라오기
+  Future<void> _ensureSpriteLoaded() async {
+    if (_spriteImage != null) return;
+    final byteData = await NetworkAssetBundle(Uri.parse(_spriteUrl)).load('');
+    final codec = await ui.instantiateImageCodec(byteData.buffer.asUint8List());
+    final frame = await codec.getNextFrame();
+    _spriteImage = frame.image;
+  }
+
+  // 1,2,3... 에 해당하는 숫자 마커를 스프라이트에서 잘라 data URL로 반환
+  Future<String> _numberMarkerDataUrl(int idx) async {
+    // kakao JS 문서 기준 값
+    const int w = 36;        // 아이콘 폭
+    const int h = 37;        // 아이콘 높이
+    const int stride = 46;   // 각 아이템 간 세로 이동량
+    const int topPad = 10;   // 맨 위 여백
+    final int srcY = (idx * stride) + topPad;
+
+    await _ensureSpriteLoaded();
+
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+    final paint = ui.Paint();
+
+    canvas.drawImageRect(
+      _spriteImage!,
+      ui.Rect.fromLTWH(0, srcY.toDouble(), w.toDouble(), h.toDouble()),
+      ui.Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()),
+      paint,
+    );
+
+    final cropped = await recorder.endRecording().toImage(w, h);
+    final png = await cropped.toByteData(format: ui.ImageByteFormat.png);
+    final b64 = base64Encode(png!.buffer.asUint8List());
+    return 'data:image/png;base64,$b64';
   }
 
   List<Marker> get _markers {
@@ -219,6 +296,39 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     );
   }
 
+  /// 좌표를 주소로 변환하는 함수 (카카오 REST API 사용)
+  Future<String?> getAddressFromCoordinates(double lat, double lon) async {
+    final url = Uri.parse('https://dapi.kakao.com/v2/local/geo/coord2address.json?x=$lon&y=$lat');
+    final String API_KEY = dotenv.env['KAKAO_REST_API_KEY']! ?? '';
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {'Authorization': 'KakaoAK $API_KEY'}
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['documents'] != null && data['documents'].isNotEmpty) {
+          final documents = data['documents'][0];
+          // 도로명 주소가 있으면 그것을, 없으면 지번 주소를 반환
+          final roadAddress = documents['road_address'];
+          if (roadAddress != null && roadAddress['address_name'] != null) {
+            return roadAddress['address_name'];
+          }
+          final address = documents['address'];
+          if (address != null && address['address_name'] != null) {
+            return address['address_name'];
+          }
+        }
+      }
+      return '주소를 찾을 수 없습니다.';
+    } catch (e) {
+      print('주소 변환 API 오류: $e');
+      return '주소를 불러오는 데 실패했습니다.';
+    }
+  }
+
   // 마커 탭 이벤트 핸들러
   Future<void> _onMarkerTap(String markerId, LatLng latLng) async {
     // 탭된 마커가 현재 위치 마커나 선택된 장소 마커인지 확인
@@ -240,8 +350,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       });
     } else if (markerId.startsWith('schedule_')) {
       // 일정 마커가 탭된 경우
-      final scheduleId = markerId.replaceFirst('schedule_', '');
-      final schedule = _schedules.firstWhere((s) => s.id == scheduleId);
+      var scheduleId = markerId.replaceFirst('schedule_', '');
+      var schedule = _schedules.firstWhere((s) => s.id == scheduleId);
       setState(() {
         _tappedMarkerId = markerId;
         _tappedLocation = schedule.location;
@@ -250,7 +360,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     }
 
     // 장소 정보 다이얼로그 띄우기
-    _showPlaceInfoDialog();
+    //_showPlaceInfoDialog();
+    _showLocationDetailsSheet(location: _tappedLocation!, markerId: _tappedMarkerId!,);
   }
 
   void _showPlaceInfoDialog() {
@@ -330,6 +441,163 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
               icon: const Icon(Icons.directions),
               label: Text(l10n.navigate),
             ),
+        ],
+      ),
+    );
+  }
+
+  void _showLocationDetailsSheet({
+    required Location location,
+    required String markerId,
+    Schedule? schedule,
+  }) {
+    final l10n = AppLocalizations.of(context);
+
+    IconData iconData;
+    Color iconColor;
+    if (markerId == 'me') {
+      iconData = Icons.my_location;
+      iconColor = Colors.blue;
+    } else if (schedule != null) {
+      iconData = Icons.event;
+      iconColor = Color(schedule.color.colorValue);
+    } else {
+      iconData = Icons.location_on;
+      iconColor = Colors.red;
+    }
+
+    showModalBottomSheet(
+
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Wrap( // Wrap을 사용하여 내용에 따라 높이가 유연하게 조절되도록 함
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // --- 제목 섹션 ---
+                  Row(
+                    children: [
+                      Icon(iconData, color: iconColor, size: 28),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(location.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            if (schedule != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                DateFormat(context.read<LanguageProvider>().isEnglish ? 'MMM dd, HH:mm' : 'MM월 dd일 HH:mm').format(schedule.dateTime),
+                                style: const TextStyle(fontSize: 13, color: Colors.grey),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close))
+                    ],
+                  ),
+                  const Divider(height: 24),
+
+                  FutureBuilder<PlaceDetails?>(
+                    future: getPlaceDetails(location),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      } else if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
+                        // API 호출 실패 또는 데이터 없을 시 기본 정보만 표시
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildDetailRow(icon: Icons.map_outlined, text: location.address ?? '주소 정보 없음'),
+                            const SizedBox(height: 16),
+                            Text(l10n.coordinates, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            Text('${l10n.latitude}: ${location.latitude!.toStringAsFixed(6)}'),
+                            Text('${l10n.longitude}: ${location.longitude!.toStringAsFixed(6)}'),
+                          ],
+                        );
+                      }
+
+                      final details = snapshot.data!;
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildDetailRow(icon: Icons.category_outlined, text: details.category),
+                          _buildDetailRow(icon: Icons.map_outlined, text: details.address),
+                          if (details.phone.isNotEmpty && details.phone != '정보 없음')
+                            _buildDetailRow(icon: Icons.phone_outlined, text: details.phone),
+
+                          const SizedBox(height: 20),
+
+                          // --- 버튼 섹션 ---
+                          Row(
+                            children: [
+                              if (details.placeUrl.isNotEmpty)
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () async {
+                                      final url = Uri.parse(details.placeUrl);
+                                      if (await canLaunchUrl(url)) {
+                                        await launchUrl(url, mode: LaunchMode.externalApplication);
+                                      }
+                                    },
+                                    icon: const Icon(Icons.info_outline),
+                                    label: const Text('카카오맵 정보'),
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                  ),
+                                ),
+                              if (details.placeUrl.isNotEmpty)
+                                const SizedBox(width: 10),
+                              Expanded(
+                                child: ElevatedButton.icon(
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                    _showTravelModeDialog(location);
+                                  },
+                                  icon: const Icon(Icons.directions),
+                                  label: Text(l10n.navigate),
+                                  style: ElevatedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // 상세 정보 행을 만드는 작은 헬퍼 위젯
+  Widget _buildDetailRow({required IconData icon, required String text}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: Colors.grey[700], size: 20),
+          const SizedBox(width: 12),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 14))),
         ],
       ),
     );
