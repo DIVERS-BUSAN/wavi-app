@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/placedetail.dart';
 import '../models/schedule.dart';
 import '../widgets/location_picker.dart';
+import '../widgets/place_detail_viewer.dart';
 import '../services/schedule_service.dart';
 import '../providers/language_provider.dart';
 import '../l10n/app_localizations.dart';
@@ -544,11 +545,15 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                               if (details.placeUrl.isNotEmpty)
                                 Expanded(
                                   child: OutlinedButton.icon(
-                                    onPressed: () async {
-                                      final url = Uri.parse(details.placeUrl);
-                                      if (await canLaunchUrl(url)) {
-                                        await launchUrl(url, mode: LaunchMode.externalApplication);
-                                      }
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) => PlaceDetailViewer(
+                                          placeUrl: details.placeUrl,
+                                          placeName: location.name,
+                                        ),
+                                      );
                                     },
                                     icon: const Icon(Icons.info_outline),
                                     label: const Text('카카오맵 정보'),
