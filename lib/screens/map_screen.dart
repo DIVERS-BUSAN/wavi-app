@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:kakao_map_plugin/kakao_map_plugin.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/schedule.dart';
 import '../widgets/location_picker.dart';
 import '../services/schedule_service.dart';
+import '../providers/language_provider.dart';
+import '../l10n/app_localizations.dart';
 import 'package:intl/intl.dart';
-
-// 카카오 내비게이션 SDK 연동을 위한 패키지
-import 'package:flutter/services.dart';
+import 'package:kakao_flutter_sdk_navi/kakao_flutter_sdk_navi.dart'as kakao_navi;
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -16,14 +18,23 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   KakaoMapController? _mapController;
+
+  // 위치 변수
   LatLng _cameraCenter =  LatLng(37.5665, 126.9780);
+  Location? _selectedLocation;
+  Location? finalDestination;
+  bool _isLoadingLocation = true;
+  List<Location> allSchedules = [];
+
+  // 마커 변수
   Marker? _currentLocationMarker;
   Marker? _selectedPlaceMarker;
-  Location? _selectedLocation;
-  bool _isLoadingLocation = true;
-  
+
+  //경유지 변수
+  List<kakao_navi.Location> viaList = [];
+
   // 일정 관련 변수
   final ScheduleService _scheduleService = ScheduleService();
   List<Schedule> _schedules = [];
@@ -36,14 +47,36 @@ class _MapScreenState extends State<MapScreen> {
   Location? _tappedLocation;
   Schedule? _tappedSchedule;
 
-  // Flutter 네이티브 채널
-  static const platform = MethodChannel('com.example.wavi_app/kakao_navi');
+  // 루트 경로 여부
+  bool _routenavigation = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initLocation();
-    _loadSchedules();
+    loadSchedules();
+  }
+  
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+  
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // 앱이 포그라운드로 돌아올 때 일정 새로고침
+      loadSchedules();
+    }
+  }
+  
+  @override
+  void didUpdateWidget(MapScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 위젯이 업데이트될 때마다 일정을 새로고침
+    loadSchedules();
   }
 
   Future<void> _initLocation() async {
@@ -67,32 +100,48 @@ class _MapScreenState extends State<MapScreen> {
         return;
       }
 
-      final Position position = await Geolocator.getCurrentPosition();
-      final LatLng me = LatLng(position.latitude, position.longitude);
-      print("현재 위치 : ${me}");
+      await _getCurrentLocation();
 
-      setState(() {
-        _cameraCenter = me;
-        _currentLocationMarker = Marker(
-          markerId: 'me',
-          latLng: me,
-        );
-        _isLoadingLocation = false;
-
-        // 지도가 생성되기 전에 마커 위치를 설정할 경우를 대비하여 컨트롤러를 통해 위치 설정
-        _mapController?.setCenter(_cameraCenter);
-      });
-
-      if (_mapController != null) {
-        await _mapController!.setCenter(me);
-        await _mapController!.setLevel(4);
-      }
-    } catch (_) {
+  }catch (_) {
       setState(() => _isLoadingLocation = false);
     }
   }
 
-  Future<void> _loadSchedules() async {
+  Future<void> _getCurrentLocation() async{
+    final Position position = await Geolocator.getCurrentPosition();
+    final LatLng me = LatLng(position.latitude, position.longitude);
+    print("현재 위치 : ${me}");
+
+    setState(() async{
+      _currentLocationMarker = Marker(
+        markerId: 'me',
+        latLng: me,
+      );
+      _isLoadingLocation = false;
+
+      await _mapController!.setCenter(me);
+      _mapController!.setLevel(4);
+    });
+
+    if (_mapController != null) {
+      await _mapController!.setCenter(me);
+      _mapController!.setLevel(4);
+    }
+  }
+
+  Future<kakao_navi.Location> to_kakao(Location location) async {
+    kakao_navi.Location result;
+
+    result = kakao_navi.Location(
+        name: location.name,
+        y: location.latitude.toString(),
+        x: location.longitude.toString()
+    );
+
+    return result;
+  }
+
+  Future<void> loadSchedules() async {
     final schedules = await _scheduleService.getAllSchedules();
     
     // 장소가 있는 일정만 필터링
@@ -134,7 +183,6 @@ class _MapScreenState extends State<MapScreen> {
       );
     }).toList();
   }
-
 
   List<Marker> get _markers {
     return [
@@ -181,7 +229,7 @@ class _MapScreenState extends State<MapScreen> {
       setState(() {
         _tappedMarkerId = markerId;
         _tappedLocation = Location(
-          name: '내 위치',
+          name: AppLocalizations.of(context).myLocation,
           latitude: latLng.latitude,
           longitude: latLng.longitude,
         );
@@ -210,6 +258,7 @@ class _MapScreenState extends State<MapScreen> {
 
   void _showPlaceInfoDialog() {
     if (_tappedLocation == null) return;
+    final l10n = AppLocalizations.of(context);
 
     // 아이콘 결정
     IconData iconData;
@@ -240,7 +289,7 @@ class _MapScreenState extends State<MapScreen> {
                   if (_tappedSchedule != null) ...[
                     const SizedBox(height: 4),
                     Text(
-                      DateFormat('MM월 dd일 HH:mm').format(_tappedSchedule!.dateTime),
+                      DateFormat(context.read<LanguageProvider>().isEnglish ? 'MMM dd HH:mm' : 'MM월 dd일 HH:mm').format(_tappedSchedule!.dateTime),
                       style: const TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                   ],
@@ -254,35 +303,35 @@ class _MapScreenState extends State<MapScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (_tappedSchedule != null && _tappedSchedule!.description != null) ...[
-              const Text('일정 내용:', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text(l10n.scheduleContent, style: const TextStyle(fontWeight: FontWeight.bold)),
               Text(_tappedSchedule!.description!),
               const SizedBox(height: 8),
             ],
             if (_tappedLocation!.address != null) ...[
-              const Text('주소:', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text(l10n.address, style: const TextStyle(fontWeight: FontWeight.bold)),
               Text(_tappedLocation!.address!),
               const SizedBox(height: 8),
             ],
             if (_tappedLocation!.latitude != null && _tappedLocation!.longitude != null) ...[
-              const Text('좌표:', style: TextStyle(fontWeight: FontWeight.bold)),
-              Text('위도: ${_tappedLocation!.latitude!.toStringAsFixed(6)}'),
-              Text('경도: ${_tappedLocation!.longitude!.toStringAsFixed(6)}'),
+              Text(l10n.coordinates, style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text('${l10n.latitude}: ${_tappedLocation!.latitude!.toStringAsFixed(6)}'),
+              Text('${l10n.longitude}: ${_tappedLocation!.longitude!.toStringAsFixed(6)}'),
             ],
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('닫기'),
+            child: Text(l10n.close),
           ),
           if (_tappedLocation!.latitude != null && _tappedLocation!.longitude != null)
             ElevatedButton.icon(
               onPressed: () {
                 Navigator.pop(context);
-                _startKakaoNavi(_tappedLocation!);
+                _showTravelModeDialog(_tappedLocation!);
               },
               icon: const Icon(Icons.directions),
-              label: const Text('길찾기'),
+              label: Text(l10n.navigate),
             ),
         ],
       ),
@@ -297,6 +346,7 @@ class _MapScreenState extends State<MapScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
+        final l10n = AppLocalizations.of(context);
         return Container(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -307,7 +357,7 @@ class _MapScreenState extends State<MapScreen> {
                   Icon(Icons.route, color: Colors.green[700]),
                   const SizedBox(width: 8),
                   Text(
-                    DateFormat('MM월 dd일 일정').format(_selectedDate),
+                    l10n.dailySchedule(_selectedDate),
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -379,125 +429,145 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   // 카카오 내비게이션 길찾기
-  Future<void> _startKakaoNavi(Location destination) async {
-    try {
-      // 현재 위치 가져오기
-      Position? currentPosition;
-      try {
-        currentPosition = await Geolocator.getCurrentPosition();
-        print('현재 위치: ${currentPosition.latitude}, ${currentPosition.longitude}');
-      } catch (e) {
-        print('현재 위치 가져오기 실패: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('현재 위치를 가져올 수 없습니다.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        return;
+  Future<void> _startKakaoNavi(
+      Location destination, {
+        String travelMode = 'CAR',
+      }) async {
+
+    viaList.forEach((via){
+      print("삭제전 경유지 ${via.name}");
+    });
+
+    kakao_navi.Location kDestination = await to_kakao(destination);
+
+    // 경유지에 목적지가 중목되면 제거
+    viaList.removeWhere((waypoint) =>
+    waypoint.y == kDestination.y &&
+        waypoint.x == kDestination.x);
+
+    viaList.forEach((via){
+      print("삭제후 경유지 ${via.name}");
+    });
+
+    print("목적지: ${kDestination.name}");
+
+
+    bool isKakaoNaviInstalled = await kakao_navi.NaviApi.instance.isKakaoNaviInstalled();
+
+    if (isKakaoNaviInstalled) {
+      if (travelMode == 'CAR') {
+        // 차량 길안내
+        try {
+          await kakao_navi.NaviApi.instance.shareDestination(
+            destination: kakao_navi.Location(
+              x: kDestination.x,
+              y: kDestination.y,
+              name: kDestination.name
+            ),
+            option: kakao_navi.NaviOption(
+                coordType: kakao_navi.CoordType.wgs84),
+            viaList: viaList,
+          );
+        } catch (e) {
+          print('에러 발생 :  ${e}');
+        }
+      } else {
+        // 도보 길안내 (카카오맵 URL 스킴 방식)
+        try {
+          final queryParameters = {
+            'ep': '${destination.latitude},${destination.longitude}',
+            'by': 'FOOT',
+          };
+
+          for (int i = 0; i < viaList.length; i++) {
+            final waypoint = viaList[i];
+            final name = Uri.encodeComponent(waypoint.name);
+            final lat = waypoint.y;
+            final lng = waypoint.x;
+            queryParameters['via\${i + 1}'] = '\$name,\$lat,\$lng';
+          };
+
+          final uri = Uri(
+            scheme: 'kakaomap',
+            host: 'route',
+            queryParameters: queryParameters,
+          );
+
+          print('생성된 도보 길안내 URL: $uri');
+
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri);
+          } else {
+            // 카카오맵이 없으면 웹으로 열기
+            final webUrl = 'https://map.kakao.com/link/to/${destination
+                .name},${destination.latitude},${destination.longitude}';
+            await launchUrl(Uri.parse(webUrl));
+          }
+        } catch (e) {
+          print('도보 길안내 실패: $e');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('도보 길안내를 실행할 수 없습니다.')),
+          );
+        }
       }
+    }
+    else {
+      try {
+        String installUrl = kakao_navi.NaviApi.webNaviInstall;
+        Uri uri = Uri.parse(installUrl);
 
-      // 카카오 내비게이션 앱이 설치되어 있는지 확인
-      final bool isInstalled = await _checkKakaoNaviInstalled();
-      print('카카오 내비게이션 설치 상태: $isInstalled');
-      
-      print('길찾기 시작:');
-      print('출발지: ${currentPosition.latitude}, ${currentPosition.longitude}');
-      print('목적지: ${destination.name} (${destination.latitude}, ${destination.longitude})');
-      
-      final dynamic result = await platform.invokeMethod('startKakaoNavi', {
-        'startLatitude': currentPosition.latitude,
-        'startLongitude': currentPosition.longitude,
-        'destinationName': destination.name,
-        'destinationLatitude': destination.latitude,
-        'destinationLongitude': destination.longitude,
-      });
-      
-      print('네비게이션 시작 결과: $result');
-      
-      // 성공 메시지 표시
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${destination.name}로 길찾기를 시작합니다.'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } on PlatformException catch (e) {
-      print("네비게이션 실행 실패: ${e.message}");
-      // 사용자에게 에러 메시지 보여주기
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('네비게이션 실행에 실패했습니다: ${e.message}'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } catch (e) {
-      print("예상치 못한 오류: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('길찾기 실행 중 오류가 발생했습니다.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri);
+        } else {
+          throw 'Could not launch $uri';
+        }
+      } catch (e) {
+        print('설치 페이지 열기 실패: $e');
+      }
     }
   }
-
-  // 카카오 내비게이션 앱 설치 여부 확인
-  Future<bool> _checkKakaoNaviInstalled() async {
-    try {
-      final bool result = await platform.invokeMethod('isKakaoNaviInstalled');
-      print('카카오 내비게이션 설치 확인 결과: $result');
-      return result;
-    } catch (e) {
-      print('카카오 내비게이션 설치 확인 실패: $e');
-      return false;
-    }
-  }
-
-  // 카카오 내비게이션 설치 안내 다이얼로그
-  void _showKakaoNaviInstallDialog() {
+  // 여행 수단 선택 다이얼로그
+  void _showTravelModeDialog(Location location) {
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('카카오 내비게이션 설치 필요'),
-        content: const Text(
-          '길찾기 기능을 사용하려면 카카오 내비게이션 앱이 필요합니다.\n'
-          '앱스토어에서 카카오 내비게이션을 설치하시겠습니까?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('취소'),
-          ),
-          ElevatedButton(
+        title: Text(l10n.chooseTravelMode),
+        content: Text(l10n.howToTravel),
+        actions: <Widget>[
+          TextButton.icon(
+            icon: const Icon(Icons.directions_walk, color: Colors.blue),
+            label: Text(
+              l10n.walking,
+              style: const TextStyle(color: Colors.blue),
+            ),
             onPressed: () {
               Navigator.pop(context);
-              _openKakaoNaviInstallPage();
+              _startKakaoNavi(location!, travelMode: 'FOOT');
             },
-            child: const Text('설치하기'),
+          ),
+          TextButton.icon(
+            icon: const Icon(Icons.directions_car, color: Colors.green),
+            label: Text(
+              l10n.driving,
+              style: const TextStyle(color: Colors.green),
+            ),
+            onPressed: () {
+              //print("목적지 ${finalDestination!.name}");
+              Navigator.pop(context);
+              _startKakaoNavi(location!, travelMode: 'CAR');
+            },
           ),
         ],
       ),
     );
   }
 
-  // 카카오 내비게이션 설치 페이지 열기
-  Future<void> _openKakaoNaviInstallPage() async {
-    try {
-      await platform.invokeMethod('openKakaoNaviInstallPage');
-    } catch (e) {
-      print('설치 페이지 열기 실패: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('설치 페이지를 열 수 없습니다.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -522,7 +592,7 @@ class _MapScreenState extends State<MapScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    _selectedLocation?.name ?? '장소를 검색하세요',
+                    _selectedLocation?.name ?? l10n.searchLocation,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: Colors.black87, fontSize: 14),
@@ -574,10 +644,10 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ),
           if (_isLoadingLocation)
-            const Positioned(
+            Positioned(
               top: 12,
               right: 12,
-              child: Chip(label: Text('현재 위치 가져오는 중...')),
+              child: Chip(label: Text(l10n.currentLocationLoading)),
             ),
           // 현재 위치 버튼
           Positioned(
@@ -586,7 +656,7 @@ class _MapScreenState extends State<MapScreen> {
             child: FloatingActionButton(
               mini: true,
               onPressed: () async {
-                await _initLocation();
+                await _getCurrentLocation();
               },
               backgroundColor: Colors.white,
               child: Icon(Icons.my_location, color: Colors.green[700]),
@@ -610,6 +680,7 @@ class _MapScreenState extends State<MapScreen> {
                   ),
                 ],
               ),
+              // 달력 클릭
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -626,12 +697,54 @@ class _MapScreenState extends State<MapScreen> {
                               firstDate: DateTime(2020),
                               lastDate: DateTime(2030),
                             );
-                            if (pickedDate != null) {
-                              setState(() {
-                                _selectedDate = pickedDate;
-                                _showDateSchedules = true;
-                              });
-                              await _loadSchedules();
+
+                            if (pickedDate == null) return;
+
+                            await loadSchedules();
+                            allSchedules = [];
+                            viaList = [];
+
+                            if (_schedules.isNotEmpty) {
+                              // 출발지 추가
+                              print('출발지: ${_currentLocationMarker!.latLng}');
+                              allSchedules.add(Location(
+                                  name: 'start',
+                                  latitude: _currentLocationMarker!.latLng.latitude,
+                                  longitude: _currentLocationMarker!.latLng.longitude
+                              ));
+
+                              // 경유지 및 도착지 처리
+                              for (int i = 0; i < _schedules.length; i++) {
+                                var waypoint = _schedules[i].location!;
+                                var kakao = await to_kakao(waypoint);
+
+                                if (i == _schedules.length - 1) {
+                                  // 마지막 항목은 도착지로 설정
+                                  print('목적지: ${waypoint.name}');
+                                  finalDestination = waypoint;
+                                  allSchedules.add(finalDestination!);
+                                  continue;
+                                }
+                                print('경유지: ${waypoint.name}');
+                                viaList.add(kakao);
+                                allSchedules.add(waypoint);
+                              }
+                            }
+
+                            setState(() {
+                              _selectedDate = pickedDate;
+                              _showDateSchedules = true;
+                              _routenavigation = true;
+                            });
+
+                            if (_mapController != null && allSchedules.isNotEmpty) {
+                              List<LatLng> bounds = allSchedules.map((location) {
+                                return LatLng(location.latitude!, location.longitude!);
+                              }).toList();
+
+                              if (bounds.isNotEmpty) {
+                                _mapController!.fitBounds(bounds);
+                              }
                             }
                           },
                           child: Container(
@@ -641,20 +754,44 @@ class _MapScreenState extends State<MapScreen> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              DateFormat('yyyy년 MM월 dd일').format(_selectedDate),
+                              DateFormat(context.read<LanguageProvider>().isEnglish ? 'MMM dd yyyy' : 'yyyy년 MM월 dd일').format(_selectedDate),
                               style: const TextStyle(fontSize: 14),
                             ),
                           ),
                         ),
                       ),
                       const SizedBox(width: 8),
+                      // 일정 스위치
                       Switch(
                         value: _showDateSchedules,
                         onChanged: (value) async {
-                          setState(() {
+                          setState(()  {
                             _showDateSchedules = value;
                           });
-                          await _loadSchedules();
+                          if (value) {
+                            await loadSchedules();
+                            _showDateSchedules = true;
+
+                              setState(() {
+                                //화면 조정
+                                if (_mapController != null) {
+                                  List<LatLng> bounds = allSchedules.map((location) {
+                                    return LatLng(location.latitude!, location.longitude!);
+                                  }).toList();
+
+                                  if (bounds.isNotEmpty) {
+                                  _mapController!.fitBounds(bounds);
+                                  }
+                                }
+                              });
+                              if(finalDestination != null)
+                                _routenavigation = true;
+                          } else {
+                            //viaList = [];
+                            //finalDestination = null;
+                            //allSchedules.clear();
+                            _routenavigation = false;
+                          }
                         },
                         activeColor: Colors.green,
                       ),
@@ -672,24 +809,29 @@ class _MapScreenState extends State<MapScreen> {
                         children: [
                           Icon(Icons.route, color: Colors.green[700], size: 16),
                           const SizedBox(width: 8),
-                          Text(
-                            '${_schedules.length}개 일정',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.green[700],
-                              fontWeight: FontWeight.w500,
+                          Flexible(
+                            child: Text(
+                              l10n.scheduleCount(_schedules.length),
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.green[700],
+                                fontWeight: FontWeight.w500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const Spacer(),
-                          TextButton.icon(
-                            onPressed: () {
-                              // 일정 목록 보기
-                              _showSchedulesList();
-                            },
-                            icon: Icon(Icons.list, size: 16, color: Colors.green[700]),
-                            label: Text(
-                              '목록보기',
-                              style: TextStyle(fontSize: 13, color: Colors.green[700]),
+                          Flexible(
+                            child: TextButton.icon(
+                              onPressed: () {
+                                // 일정 목록 보기
+                                _showSchedulesList();
+                              },
+                              icon: Icon(Icons.list, size: 16, color: Colors.green[700]),
+                              label: Text(
+                                l10n.listView,
+                                style: TextStyle(fontSize: 13, color: Colors.green[700]),
+                              ),
                             ),
                           ),
                         ],
@@ -700,6 +842,19 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ),
           ),
+            // 길안내
+            if(_routenavigation)
+              Positioned(
+                  bottom: 190,
+                  left: 55,
+                  right: 90,
+                  child: FloatingActionButton(
+                    child: Text('길찾기'),
+                      onPressed: (){
+                      _showTravelModeDialog(finalDestination!);
+                      }
+                  )
+              )
           ],
         ),
       ),

@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../widgets/custom_app_bar.dart';
 import '../models/schedule.dart';
 import '../services/schedule_service.dart';
 import '../services/notification_service.dart';
+import '../providers/language_provider.dart';
+import '../l10n/app_localizations.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -51,9 +54,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    
     return Scaffold(
       extendBodyBehindAppBar: true,
-      appBar: const CustomAppBar(title: '알림'),
+      appBar: CustomAppBar(title: l10n.notificationTab),
       body: SafeArea(
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
@@ -65,13 +70,11 @@ class _NotificationScreenState extends State<NotificationScreen> {
                       margin: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(25),
                       ),
-                      child: const TabBar(
+                      child: TabBar(
                         indicatorSize: TabBarIndicatorSize.tab,
-                        indicator: BoxDecoration(
+                        indicator: const BoxDecoration(
                           color: Colors.orange,
-                          borderRadius: BorderRadius.all(Radius.circular(25)),
                         ),
                         labelColor: Colors.white,
                         unselectedLabelColor: Colors.grey,
@@ -80,9 +83,15 @@ class _NotificationScreenState extends State<NotificationScreen> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.schedule, size: 18),
-                                SizedBox(width: 4),
-                                Text('예정된 알림'),
+                                const Icon(Icons.schedule, size: 18),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    l10n.upcomingNotifications,
+                                    textAlign: TextAlign.center,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -90,9 +99,15 @@ class _NotificationScreenState extends State<NotificationScreen> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.history, size: 18),
-                                SizedBox(width: 4),
-                                Text('알림 히스토리'),
+                                const Icon(Icons.history, size: 18),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    l10n.notificationHistory,
+                                    textAlign: TextAlign.center,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -115,25 +130,27 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   Widget _buildUpcomingNotifications() {
+    final l10n = AppLocalizations.of(context);
+    
     if (_upcomingSchedules.isEmpty) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
+            const Icon(
               Icons.notifications_off,
               size: 80,
               color: Colors.grey,
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Text(
-              '예정된 알림이 없습니다',
-              style: TextStyle(fontSize: 18, color: Colors.grey),
+              l10n.noUpcomingNotifications,
+              style: const TextStyle(fontSize: 18, color: Colors.grey),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
-              '일정을 추가하고 알림을 설정해보세요',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
+              l10n.addScheduleWithAlerts,
+              style: const TextStyle(fontSize: 14, color: Colors.grey),
             ),
           ],
         ),
@@ -151,20 +168,22 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   Widget _buildNotificationHistory() {
+    final l10n = AppLocalizations.of(context);
+    
     if (_completedSchedules.isEmpty) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
+            const Icon(
               Icons.history,
               size: 80,
               color: Colors.grey,
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Text(
-              '알림 히스토리가 없습니다',
-              style: TextStyle(fontSize: 18, color: Colors.grey),
+              l10n.noNotificationHistory,
+              style: const TextStyle(fontSize: 18, color: Colors.grey),
             ),
           ],
         ),
@@ -184,19 +203,20 @@ class _NotificationScreenState extends State<NotificationScreen> {
   Widget _buildNotificationCard(Schedule schedule, {required bool isUpcoming}) {
     final now = DateTime.now();
     final isOverdue = schedule.dateTime.isBefore(now);
+    final l10n = AppLocalizations.of(context);
     
     // 알림 시간 계산
     String notificationTimeText = '';
     if (schedule.alarmDateTime != null) {
       final difference = schedule.dateTime.difference(schedule.alarmDateTime!).inMinutes;
       if (difference == 0) {
-        notificationTimeText = '정시에 알림';
+        notificationTimeText = l10n.onTime;
       } else if (difference < 60) {
-        notificationTimeText = '${difference}분 전 알림';
+        notificationTimeText = l10n.minutesBefore(difference);
       } else if (difference < 1440) {
-        notificationTimeText = '${difference ~/ 60}시간 전 알림';
+        notificationTimeText = l10n.hoursBefore(difference ~/ 60);
       } else {
-        notificationTimeText = '${difference ~/ 1440}일 전 알림';
+        notificationTimeText = l10n.daysBefore(difference ~/ 1440);
       }
     }
 
@@ -208,7 +228,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
         onTap: () {
           // TODO: 해당 일정으로 이동하는 기능 추가
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('${schedule.title} 일정으로 이동')),
+            SnackBar(content: Text('${schedule.title} ${l10n.goToSchedule}')),
           );
         },
         borderRadius: BorderRadius.circular(12),
@@ -256,8 +276,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
                               ),
                               child: Text(
                                 isUpcoming 
-                                    ? (isOverdue ? '지연됨' : '예정')
-                                    : '완료',
+                                    ? (isOverdue ? l10n.overdue : l10n.scheduled)
+                                    : l10n.completed,
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 12,
@@ -273,7 +293,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
                             const Icon(Icons.schedule, size: 14, color: Colors.grey),
                             const SizedBox(width: 4),
                             Text(
-                              DateFormat('MM월 dd일 HH:mm').format(schedule.dateTime),
+                              DateFormat(context.read<LanguageProvider>().isEnglish ? 'MMM dd HH:mm' : 'MM월 dd일 HH:mm').format(schedule.dateTime),
                               style: const TextStyle(color: Colors.grey),
                             ),
                           ],
