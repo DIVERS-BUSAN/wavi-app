@@ -61,6 +61,7 @@ abstract class AppLocalizations {
   String get howToTravel;
   String get walking;
   String get driving;
+  String get publicTransport;
   
   // Schedule screen
   String get scheduleTitle;

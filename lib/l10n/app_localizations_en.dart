@@ -17,6 +17,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get driving => 'Driving';
 
   @override
+  String get publicTransport => 'Public Transport';
+
+  @override
   String get mapTab => 'Map';
 
   @override

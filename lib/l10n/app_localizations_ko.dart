@@ -17,6 +17,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get driving => '자동차';
 
   @override
+  String get publicTransport => '대중교통';
+
+  @override
   String get mapTab => '지도';
 
   @override

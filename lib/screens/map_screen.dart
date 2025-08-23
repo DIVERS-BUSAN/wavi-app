@@ -847,7 +847,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         } catch (e) {
           print('에러 발생 :  ${e}');
         }
-      } else {
+      } else if (travelMode == 'FOOT') {
         // 도보 길안내 (카카오맵 URL 스킴 방식)
         try {
           final queryParameters = {
@@ -882,6 +882,47 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         } catch (e) {
           print('도보 길안내 실패: $e');
           ToastUtils.showError('도보 길안내를 실행할 수 없습니다.');
+        }
+      } else if (travelMode == 'PUBLICTRANSIT') {
+        // 대중교통 길안내 (카카오맵 URL 스킴 방식)
+        // 대중교통 모드는 경유지를 지원하지 않으므로 현재 위치에서 목적지로 바로 이동
+        try {
+          Position? currentPosition;
+          try {
+            currentPosition = await Geolocator.getCurrentPosition();
+          } catch (e) {
+            print('현재 위치 가져오기 실패: $e');
+          }
+
+          final queryParameters = <String, String>{
+            'ep': '${destination.latitude},${destination.longitude}',
+            'by': 'PUBLICTRANSIT',
+          };
+
+          // 현재 위치가 있으면 출발지로 설정
+          if (currentPosition != null) {
+            queryParameters['sp'] = '${currentPosition.latitude},${currentPosition.longitude}';
+          }
+
+          final uri = Uri(
+            scheme: 'kakaomap',
+            host: 'route',
+            queryParameters: queryParameters,
+          );
+
+          print('생성된 대중교통 길안내 URL: $uri');
+
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri);
+          } else {
+            // 카카오맵이 없으면 웹으로 열기
+            final webUrl = 'https://map.kakao.com/link/to/${destination
+                .name},${destination.latitude},${destination.longitude}';
+            await launchUrl(Uri.parse(webUrl));
+          }
+        } catch (e) {
+          print('대중교통 길안내 실패: $e');
+          ToastUtils.showError('대중교통 길안내를 실행할 수 없습니다.');
         }
       }
     }
@@ -931,6 +972,17 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
               //print("목적지 ${finalDestination!.name}");
               Navigator.pop(context);
               _startKakaoNavi(location!, travelMode: 'CAR');
+            },
+          ),
+          TextButton.icon(
+            icon: const Icon(Icons.directions_transit, color: Colors.orange),
+            label: Text(
+              l10n.publicTransport,
+              style: const TextStyle(color: Colors.orange),
+            ),
+            onPressed: () {
+              Navigator.pop(context);
+              _startKakaoNavi(location!, travelMode: 'PUBLICTRANSIT');
             },
           ),
         ],
