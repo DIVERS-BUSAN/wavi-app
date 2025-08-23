@@ -6,9 +6,11 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/placedetail.dart';
 import '../models/schedule.dart';
 import '../widgets/location_picker.dart';
+import '../widgets/place_detail_viewer.dart';
 import '../services/schedule_service.dart';
 import '../providers/language_provider.dart';
 import '../l10n/app_localizations.dart';
+import '../utils/toast_utils.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:intl/intl.dart';
@@ -54,6 +56,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   String? _tappedMarkerId;
   Location? _tappedLocation;
   Schedule? _tappedSchedule;
+
+  //polyline 변수
+  Polyline? _routePolyline;
 
   // 루트 경로 여부
   bool _routenavigation = false;
@@ -547,11 +552,15 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                               if (details.placeUrl.isNotEmpty)
                                 Expanded(
                                   child: OutlinedButton.icon(
-                                    onPressed: () async {
-                                      final url = Uri.parse(details.placeUrl);
-                                      if (await canLaunchUrl(url)) {
-                                        await launchUrl(url, mode: LaunchMode.externalApplication);
-                                      }
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) => PlaceDetailViewer(
+                                          placeUrl: details.placeUrl,
+                                          placeName: location.name,
+                                        ),
+                                      );
                                     },
                                     icon: const Icon(Icons.info_outline),
                                     label: const Text('카카오맵 정보'),
@@ -697,6 +706,104 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     );
   }
 
+  //카카오 Polyline을 가져오는 함수
+  Future<List<LatLng>> getRoutePolyline(LatLng start, LatLng end) async {
+    final String API_KEY = dotenv.env['KAKAO_REST_API_KEY'] ?? '';
+
+    final queryParams = {
+      'origin': '${start.longitude},${start.latitude}',
+      'destination': '${end.longitude},${end.latitude}',
+      'priority': 'RECOMMEND',
+      'car_fuel': 'GASOLINE',
+      'car_hipass': 'false',
+    };
+
+    try {
+      final uri = Uri.https(
+        'apis-navi.kakaomobility.com',
+        '/v1/directions',
+        queryParams,
+      );
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'KakaoAK $API_KEY',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final List<LatLng> polylinePoints = [];
+
+        if (data['routes'] != null && data['routes'] is List && data['routes'].isNotEmpty) {
+          final firstRoute = data['routes'][0];
+          final resultCode = firstRoute['result_code'];
+          final resultMsg = firstRoute['result_msg'];
+          print("API 결과 코드: $resultCode, 메시지: $resultMsg");
+
+          final sections = firstRoute['sections'];
+          if (sections != null && sections.isNotEmpty) {
+            // 정상적으로 경로 처리
+          } else {
+            print("경로 없음: $resultMsg");
+          }
+
+          if (sections != null && sections is List && sections.isNotEmpty) {
+            for (var section in sections) {
+              final roads = section['roads'];
+              if (roads != null && roads is List && roads.isNotEmpty) {
+                for (var road in roads) {
+                  final vertexes = road['vertexes'];
+                  if (vertexes != null && vertexes is List && vertexes.isNotEmpty) {
+                    for (int i = 0; i < vertexes.length; i += 2) {
+                      polylinePoints.add(LatLng(vertexes[i + 1], vertexes[i]));
+                    }
+                  }
+                }
+              }
+            }
+          } else {
+            print("경로 데이터 없음: sections 비어 있음");
+          }
+        } else {
+          print("경로 데이터 없음: routes 비어 있음");
+        }
+        return polylinePoints;
+      }else {
+        print('경로 API 오류: ${response.statusCode} ${response.body}');
+      }
+    } catch (e) {
+      print('경로 API 통신 오류: $e');
+    }
+
+    return [];
+  }
+
+  // polyline 지도에 표시
+  Future<void> _drawRoutePolyline(LatLng pointA, LatLng pointB) async {
+    // API를 통해 경로 데이터 가져오기
+    final List<LatLng> points = await getRoutePolyline(pointA, pointB);
+
+    if (points.isNotEmpty) {
+      setState(() {
+        _routePolyline = Polyline(
+          polylineId: 'route_a_b',
+          points: points,
+          strokeColor: Colors.blueAccent,
+          strokeOpacity: 0.9,
+          strokeWidth: 10,
+          strokeStyle: StrokeStyle.solid,
+        );
+      });
+    } else {
+      ToastUtils.showError('경로를 탐색할 수 없습니다.');
+      setState(() {
+        _routePolyline = null;
+      });
+    }
+  }
+
   // 카카오 내비게이션 길찾기
   Future<void> _startKakaoNavi(
       Location destination, {
@@ -774,9 +881,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           }
         } catch (e) {
           print('도보 길안내 실패: $e');
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('도보 길안내를 실행할 수 없습니다.')),
-          );
+          ToastUtils.showError('도보 길안내를 실행할 수 없습니다.');
         }
       }
     }
@@ -795,6 +900,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       }
     }
   }
+
   // 여행 수단 선택 다이얼로그
   void _showTravelModeDialog(Location location) {
     final l10n = AppLocalizations.of(context);
@@ -903,6 +1009,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 center: _cameraCenter,
                 currentLevel: 4,
                 markers: _markers,
+                polylines: [if (_routePolyline != null) _routePolyline!],
                 onMapCreated: (controller) async {
                   _mapController = controller;
                   await controller.setCenter(_cameraCenter);
@@ -1005,7 +1112,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                                 viaList.add(kakao);
                                 allSchedules.add(waypoint);
                               }
-                              
+                              //경로(polyline) 그리기
+                              await _drawRoutePolyline(_currentLocationMarker!.latLng, LatLng(allSchedules.last.latitude!,allSchedules.last.longitude!));
                               setState(() {
                                 _routenavigation = true;
                               });
@@ -1042,11 +1150,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                           setState(() {
                             _showDateSchedules = value ?? false;
                           });
-                          
                           if (value ?? false) {
                             await loadSchedules(forceShowDateSchedules: true);
-                            
-                            setState(() {
+                            //await _drawRoutePolyline(_currentLocationMarker!.latLng, LatLng(allSchedules.last.latitude!,allSchedules.last.longitude!));
+
+                                setState(() {
                               // 화면 조정
                               if (_mapController != null && allSchedules.isNotEmpty) {
                                 List<LatLng> bounds = allSchedules.map((location) {
@@ -1066,6 +1174,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                             await loadSchedules(); // 모든 일정 표시
                             setState(() {
                               _routenavigation = false;
+                              _routePolyline = null;
                             });
                           }
                         },
