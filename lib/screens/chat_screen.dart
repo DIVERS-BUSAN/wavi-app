@@ -18,6 +18,8 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:convert';
 import '../services/tourism_service.dart';
+import '../services/schedule_generator_service.dart';
+import '../services/visit_duration_service.dart';
 import '../widgets/location_selection_dialog.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -34,6 +36,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final OpenAIService _openAIService = OpenAIService();
   final ScheduleService _scheduleService = ScheduleService();
   final TourismService _tourismService = TourismService();
+  final ScheduleGeneratorService _scheduleGeneratorService = ScheduleGeneratorService();
 
   static const String _messagesKey = 'chat_messages';
 
@@ -487,6 +490,19 @@ class _ChatScreenState extends State<ChatScreen> {
       '날짜',
       '알림',
       '리마인더',
+      '여행',
+      '관광',
+      '여행일정',
+      '관광일정',
+      '여행계획',
+      '일정짜',
+      '계획짜',
+      '코스',
+      '여행코스',
+      '관광코스',
+      '투어',
+      '당일치기',
+      '부산',
     ];
 
     final lowerText = text.toLowerCase();
@@ -496,6 +512,13 @@ class _ChatScreenState extends State<ChatScreen> {
   // 일정 생성 처리
   Future<void> _handleScheduleCreation(String text) async {
     try {
+      // 여행 일정 생성 요청인지 확인
+      if (_isTravelItineraryRequest(text)) {
+        await _handleTravelItineraryCreation(text);
+        return;
+      }
+
+      // 기존 단일 일정 생성 로직
       // OpenAI를 통해 일정 정보 추출
       final extractionPrompt =
           '''
@@ -536,6 +559,354 @@ class _ChatScreenState extends State<ChatScreen> {
       print('일정 생성 오류: $e');
       await _respondWithError('일정 생성 중 오류가 발생했습니다: ${e.toString()}');
     }
+  }
+
+  // 여행 일정 생성 요청인지 확인
+  bool _isTravelItineraryRequest(String text) {
+    final travelKeywords = [
+      '여행일정',
+      '관광일정',
+      '여행계획',
+      '일정짜',
+      '계획짜',
+      '여행코스',
+      '관광코스',
+      '투어',
+      '당일치기',
+      '여행',
+      '관광',
+    ];
+
+    final lowerText = text.toLowerCase();
+    return travelKeywords.any((keyword) => lowerText.contains(keyword)) &&
+           (lowerText.contains('짜') || lowerText.contains('만들') || 
+            lowerText.contains('계획') || lowerText.contains('추천'));
+  }
+
+  // 여행 일정 자동 생성 처리
+  Future<void> _handleTravelItineraryCreation(String text) async {
+    try {
+      setState(() => _isTyping = true);
+
+      // AI에게 여행 정보 추출 요청
+      final extractionPrompt = '''
+다음 사용자 요청에서 여행 정보를 정확히 추출해주세요:
+"$text"
+
+다음 JSON 형식으로 응답해주세요:
+{
+  "destination": "여행 목적지 (예: 부산, 서울, 제주)",
+  "date": "여행 시작 날짜 (YYYY-MM-DD 형식)",
+  "duration": "여행 기간 (일 단위, 당일치기면 1)",
+  "startTime": "시작 시간 (HH:mm 형식, 기본값: 09:00)",
+  "endTime": "종료 시간 (HH:mm 형식, 기본값: 18:00)",
+  "interests": ["관심사나 선호하는 장소 유형들 배열"]
+}
+
+중요한 규칙:
+1. "오늘"이면 오늘 날짜, "내일"이면 내일 날짜, "모레"면 모레 날짜로 정확히 설정
+2. "당일치기", "하루", "일일"이 포함되면 duration은 1로 설정
+3. 특별한 언급이 없으면 당일치기(duration: 1)로 처리
+
+현재 시간: ${DateTime.now()}
+오늘 날짜: ${DateFormat('yyyy-MM-dd').format(DateTime.now())}
+내일 날짜: ${DateFormat('yyyy-MM-dd').format(DateTime.now().add(const Duration(days: 1)))}
+모레 날짜: ${DateFormat('yyyy-MM-dd').format(DateTime.now().add(const Duration(days: 2)))}
+''';
+
+      final response = await _openAIService.sendMessage([
+        ChatMessage(content: extractionPrompt, type: MessageType.user),
+      ]);
+
+      if (response != null) {
+        await _processTravelItineraryData(response.content, text);
+      } else {
+        throw Exception('여행 정보를 추출할 수 없습니다.');
+      }
+    } catch (e) {
+      print('여행 일정 생성 오류: $e');
+      await _respondWithError('여행 일정 생성 중 오류가 발생했습니다: ${e.toString()}');
+    }
+  }
+
+  // 여행 일정 데이터 처리
+  Future<void> _processTravelItineraryData(String responseContent, String originalText) async {
+    try {
+      // JSON 파싱
+      final jsonStart = responseContent.indexOf('{');
+      final jsonEnd = responseContent.lastIndexOf('}') + 1;
+
+      if (jsonStart == -1 || jsonEnd <= jsonStart) {
+        throw Exception('유효한 JSON 형식을 찾을 수 없습니다.');
+      }
+
+      final jsonString = responseContent.substring(jsonStart, jsonEnd);
+      final travelData = jsonDecode(jsonString);
+
+      // 여행 정보 추출
+      final destination = travelData['destination'] ?? '서울';
+      final dateStr = travelData['date'] ?? DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final durationValue = travelData['duration'];
+      int duration = 1;
+      
+      // duration을 안전하게 정수로 변환
+      if (durationValue != null) {
+        if (durationValue is int) {
+          duration = durationValue;
+        } else if (durationValue is String) {
+          duration = int.tryParse(durationValue) ?? 1;
+        }
+      }
+      
+      final startTimeStr = travelData['startTime'] ?? '09:00';
+      final endTimeStr = travelData['endTime'] ?? '18:00';
+      final interests = List<String>.from(travelData['interests'] ?? []);
+
+      // 날짜와 시간 파싱
+      final startDate = DateTime.parse(dateStr);
+      final startTimeParts = startTimeStr.split(':');
+      final endTimeParts = endTimeStr.split(':');
+      
+      final startTime = TimeOfDay(
+        hour: int.parse(startTimeParts[0]),
+        minute: int.parse(startTimeParts[1]),
+      );
+      
+      final endTime = TimeOfDay(
+        hour: int.parse(endTimeParts[0]),
+        minute: int.parse(endTimeParts[1]),
+      );
+
+      // 진행 상황 메시지
+      final durationText = duration == 1 ? '당일치기' : '${duration}일 여행';
+      final progressMessage = ChatMessage(
+        content: '🗺️ $destination $durationText 일정을 생성하고 있습니다...\n\n📅 날짜: ${DateFormat('yyyy년 MM월 dd일').format(startDate)} ($durationText)\n⏰ 시간: ${startTimeStr} - ${endTimeStr}\n📍 관심사: ${interests.join(', ')}',
+        type: MessageType.assistant,
+      );
+
+      setState(() {
+        _messages.add(progressMessage);
+        _isTyping = false;
+      });
+      _scrollToBottom();
+
+      // 목적지 기반으로 인기 장소 검색 (여러 검색어로 시도)
+      List<Location> places = [];
+      
+      final searchQueries = [
+        '$destination 관광지',
+        '$destination 맛집', 
+        '$destination 여행',
+        '$destination',
+        '$destination 명소',
+      ];
+      
+      for (String query in searchQueries) {
+        final searchResults = await _searchKakaoPlaces(query, limit: 5);
+        places.addAll(searchResults);
+        if (places.length >= 10) break;
+      }
+      
+      // 중복 제거
+      final uniquePlaces = <String, Location>{};
+      for (final place in places) {
+        uniquePlaces[place.name] = place;
+      }
+      places = uniquePlaces.values.toList();
+
+      if (places.isEmpty) {
+        // 기본 장소들로 대체
+        places = _getDefaultPlacesForDestination(destination);
+        if (places.isEmpty) {
+          throw Exception('$destination의 관광 정보를 찾을 수 없습니다.');
+        }
+      }
+
+      // PlaceCandidate 목록 생성
+      List<PlaceCandidate> candidates = [];
+      for (int i = 0; i < places.length && i < 6; i++) {
+        final place = places[i];
+        candidates.add(PlaceCandidate(
+          title: place.name,
+          description: '$destination 여행',
+          location: place,
+          category: _getCategoryFromPlace(place.name),
+          priority: 10 - i, // 순서대로 우선순위 부여
+        ));
+      }
+
+      setState(() => _isTyping = true);
+
+      // 일정 생성
+      final schedules = await _scheduleGeneratorService.generateTravelItinerary(
+        places: candidates,
+        startDate: startDate,
+        startTime: startTime,
+        endTime: endTime,
+        maxPlacesPerDay: 5,
+        duration: duration, // 여행 기간 적용
+      );
+
+      if (schedules.isNotEmpty) {
+        // 생성된 일정 저장
+        final success = await _scheduleGeneratorService.saveGeneratedSchedules(schedules);
+
+        if (success) {
+          // 상세한 성공 메시지 생성
+          final durationText = duration == 1 ? '당일치기' : '${duration}일';
+          String scheduleText = '✅ $destination $durationText 여행 일정이 생성되었습니다!\n\n';
+          
+          DateTime? currentDate;
+          Location? previousLocation;
+          
+          for (int i = 0; i < schedules.length; i++) {
+            final schedule = schedules[i];
+            
+            // 날짜가 바뀌면 날짜 표시
+            if (currentDate == null || 
+                currentDate.day != schedule.dateTime.day ||
+                currentDate.month != schedule.dateTime.month) {
+              currentDate = schedule.dateTime;
+              scheduleText += '📅 ${DateFormat('MM월 dd일 (E)', 'ko_KR').format(currentDate)}\n';
+              scheduleText += '\n';
+            }
+            
+            // 이동시간 계산 및 표시
+            if (previousLocation != null && schedule.location != null) {
+              try {
+                final routeInfo = await _scheduleGeneratorService.getRouteInfo(
+                  originLat: previousLocation.latitude!,
+                  originLng: previousLocation.longitude!,
+                  destLat: schedule.location!.latitude!,
+                  destLng: schedule.location!.longitude!,
+                );
+                
+                if (routeInfo != null) {
+                  scheduleText += '🚗 이동시간: ${routeInfo.durationInMinutes}분 (${routeInfo.distanceInKm.toStringAsFixed(1)}km)\n';
+                  scheduleText += '\n';
+                }
+              } catch (e) {
+                scheduleText += '🚗 이동시간: 약 15분\n';
+                scheduleText += '\n';
+              }
+            }
+            
+            // 일정 시간
+            scheduleText += '⏰ ${DateFormat('HH:mm').format(schedule.dateTime)} ${schedule.title}\n';
+          
+            
+            // 체류시간 계산 및 표시
+            final category = _getCategoryFromPlace(schedule.title);
+            final visitDuration = VisitDurationService.calculateVisitDuration(
+              category: category,
+              visitTime: schedule.dateTime,
+            );
+            final endTime = schedule.dateTime.add(Duration(minutes: visitDuration));
+            
+            scheduleText += '⌚ 체류시간: ${visitDuration}분 (${DateFormat('HH:mm').format(endTime)}까지)\n';
+            scheduleText += '\n';
+            
+            previousLocation = schedule.location;
+          }
+
+          // 총 소요시간 및 요약
+          if (schedules.isNotEmpty) {
+            final firstSchedule = schedules.first;
+            final lastSchedule = schedules.last;
+            final totalDuration = lastSchedule.dateTime.difference(firstSchedule.dateTime);
+        
+            scheduleText += '📊 여행 요약\n';
+            scheduleText += '• 총 ${schedules.length}개 장소 방문\n';
+            scheduleText += '• 여행 시간: ${DateFormat('HH:mm').format(firstSchedule.dateTime)} - ${DateFormat('HH:mm').format(lastSchedule.dateTime)}\n';
+            scheduleText += '• 소요 시간: ${totalDuration.inHours}시간 ${totalDuration.inMinutes % 60}분\n\n';
+          }
+
+          scheduleText += '🗺️ 지도 화면에서 일정을 확인하고 길찾기를 이용해보세요!';
+
+          final successMessage = ChatMessage(
+            content: scheduleText,
+            type: MessageType.assistant,
+          );
+
+          setState(() {
+            _messages.add(successMessage);
+            _isTyping = false;
+          });
+
+          // TTS로 성공 메시지 읽기
+          await _flutterTts.speak('$destination 여행 일정을 성공적으로 생성했습니다. 지도 화면에서 확인해보세요.');
+        } else {
+          throw Exception('일정 저장에 실패했습니다.');
+        }
+      } else {
+        throw Exception('일정을 생성할 수 없습니다.');
+      }
+    } catch (e) {
+      print('여행 일정 처리 오류: $e');
+      await _respondWithError('여행 일정 생성 중 오류가 발생했습니다: ${e.toString()}');
+    }
+
+    setState(() => _isTyping = false);
+    _scrollToBottom();
+    _saveChatHistory();
+  }
+
+  // 장소명에서 카테고리 추정
+  String _getCategoryFromPlace(String placeName) {
+    final lowerName = placeName.toLowerCase();
+    
+    if (lowerName.contains('박물관') || lowerName.contains('미술관')) {
+      return '박물관';
+    } else if (lowerName.contains('해변') || lowerName.contains('바다')) {
+      return '해변';
+    } else if (lowerName.contains('산') || lowerName.contains('등산')) {
+      return '산';
+    } else if (lowerName.contains('공원') || lowerName.contains('정원')) {
+      return '공원';
+    } else if (lowerName.contains('카페') || lowerName.contains('스타벅스')) {
+      return '카페';
+    } else if (lowerName.contains('식당') || lowerName.contains('맛집')) {
+      return '음식점';
+    } else if (lowerName.contains('시장') || lowerName.contains('쇼핑')) {
+      return '시장';
+    } else {
+      return '관광명소';
+    }
+  }
+
+  // 목적지별 기본 장소 목록 제공
+  List<Location> _getDefaultPlacesForDestination(String destination) {
+    final Map<String, List<Map<String, dynamic>>> defaultPlaces = {
+      '부산': [
+        {'name': '해운대해수욕장', 'address': '부산 해운대구 우동', 'lat': 35.1587, 'lng': 129.1603},
+        {'name': '광안리해수욕장', 'address': '부산 수영구 광안2동', 'lat': 35.1532, 'lng': 129.1183},
+        {'name': '자갈치시장', 'address': '부산 중구 남포동4가', 'lat': 35.0966, 'lng': 129.0305},
+        {'name': '감천문화마을', 'address': '부산 사하구 감천2동', 'lat': 35.0976, 'lng': 129.0114},
+        {'name': '태종대', 'address': '부산 영도구 전망로', 'lat': 35.0513, 'lng': 129.0865},
+        {'name': '부산타워', 'address': '부산 중구 용두산길', 'lat': 35.1014, 'lng': 129.0325},
+      ],
+    };
+
+    final lowerDestination = destination.toLowerCase();
+    String? key;
+    
+    for (String dest in defaultPlaces.keys) {
+      if (lowerDestination.contains(dest)) {
+        key = dest;
+        break;
+      }
+    }
+
+    if (key != null) {
+      return defaultPlaces[key]!.map((place) => Location(
+        name: place['name'],
+        address: place['address'],
+        latitude: place['lat'],
+        longitude: place['lng'],
+      )).toList();
+    }
+
+    return [];
   }
 
   // 일정 데이터 처리
