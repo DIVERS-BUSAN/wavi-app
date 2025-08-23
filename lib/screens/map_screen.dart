@@ -17,6 +17,7 @@ import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'dart:math' as math;
 import 'package:flutter/services.dart' show NetworkAssetBundle;
 import 'package:kakao_flutter_sdk_navi/kakao_flutter_sdk_navi.dart'as kakao_navi;
 
@@ -201,32 +202,33 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       var lat = schedule.location!.latitude!;
       var lng = schedule.location!.longitude!;
 
-      if (i == list.length - 1) {
-        //도착지
-        markers.add(
-          Marker(
-              markerId: 'schedule_${schedule.id}',
-              latLng: LatLng(lat, lng),
-              markerImageSrc: 'http://t1.daumcdn.net/localimg/localimages/07/mapapidoc/markerStar.png',
-              width: 24,
-              height: 32
-          ),
-        );
-      } else {
-        final dataUrl = await _numberMarkerDataUrl(i);
-        //경유지
-        markers.add(
-          Marker(
-              markerId: 'schedule_${schedule.id}',
-              latLng: LatLng(lat, lng),
-              markerImageSrc: dataUrl,
-              width: 35,
-              height: 35
-          ),
-        );
+      if(i%2 != 0){
+        if (i == list.length - 1) {
+          //도착지
+          markers.add(
+            Marker(
+                markerId: 'schedule_${schedule.id}',
+                latLng: LatLng(lat, lng),
+                markerImageSrc: 'http://t1.daumcdn.net/localimg/localimages/07/mapapidoc/markerStar.png',
+                width: 24,
+                height: 32
+            ),
+          );
+        } else {
+          final dataUrl = await _numberMarkerDataUrl(i-1);
+          //경유지
+          markers.add(
+            Marker(
+                markerId: 'schedule_${schedule.id}',
+                latLng: LatLng(lat, lng),
+                markerImageSrc: dataUrl,
+                width: 35,
+                height: 35
+            ),
+          );
+        }
       }
     }
-
     return markers;
   }
 
@@ -684,15 +686,44 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                             ),
                         ],
                       ),
-                      onTap: () {
+                      //여기로
+                      onTap: () async {
                         Navigator.pop(context);
-                        if (schedule.location?.latitude != null && 
-                            schedule.location?.longitude != null) {
+
+                        if (schedule.location?.latitude == null || schedule.location?.longitude == null) {
+                          return;
+                        }
+
+                        if (schedule.isEvent) {
                           _mapController?.setCenter(LatLng(
                             schedule.location!.latitude!,
                             schedule.location!.longitude!,
                           ));
                           _mapController?.setLevel(3);
+                        }
+                        // isEvent가 false이면 경로 그리기
+                        else {
+                          LatLng startLatLng;
+                          final endLatLng = LatLng(schedule.location!.latitude!, schedule.location!.longitude!);
+
+                          if (index == 0) {
+                            startLatLng = _currentLocationMarker!.latLng;
+                          }
+                          else {
+                            final previousSchedule = _schedules[index - 1];
+                            if (previousSchedule.location?.latitude == null || previousSchedule.location?.longitude == null) {
+                              return;
+                            }
+                            startLatLng = LatLng(previousSchedule.location!.latitude!, previousSchedule.location!.longitude!);
+                          }
+
+                          // 경로(polyline) 그리기
+                          await _drawRoutePolyline(startLatLng, endLatLng);
+
+                          List<LatLng> bounds = [startLatLng, endLatLng];
+                          setState(() {
+                            _mapController!.fitBounds(bounds);
+                          });
                         }
                       },
                     );
@@ -1140,6 +1171,17 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                             viaList = [];
 
                             if (_schedules.isNotEmpty) {
+                              List<Schedule> newSchedules = [];
+
+                              for (int i = 0; i < _schedules.length; i++) {
+                                if (i % 2 != 0) {
+                                  final schedule = _schedules[i];
+                                  newSchedules.add(schedule);
+
+                                  print('인덱스 $i (홀수): ${schedule.location!.name}, ${schedule.isEvent}');
+                                }
+                              }
+
                               // 출발지 추가
                               print('출발지: ${_currentLocationMarker!.latLng}');
                               allSchedules.add(Location(
@@ -1149,11 +1191,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                               ));
 
                               // 경유지 및 도착지 처리
-                              for (int i = 0; i < _schedules.length; i++) {
-                                var waypoint = _schedules[i].location!;
+                              for (int i = 0; i < newSchedules.length; i++) {
+                                var waypoint = newSchedules[i].location!;
                                 var kakao = await to_kakao(waypoint);
 
-                                if (i == _schedules.length - 1) {
+                                if (i == newSchedules.length - 1) {
                                   // 마지막 항목은 도착지로 설정
                                   print('목적지: ${waypoint.name}');
                                   finalDestination = waypoint;
@@ -1164,8 +1206,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                                 viaList.add(kakao);
                                 allSchedules.add(waypoint);
                               }
-                              //경로(polyline) 그리기
-                              await _drawRoutePolyline(_currentLocationMarker!.latLng, LatLng(allSchedules.last.latitude!,allSchedules.last.longitude!));
                               setState(() {
                                 _routenavigation = true;
                               });
