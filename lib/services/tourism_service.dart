@@ -10,7 +10,6 @@ class TourismService {
       headers: {"Content-Type": "application/json"},
       body: jsonEncode({"message": query}),
     );
-    print("$_baseUrl/rag");
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);

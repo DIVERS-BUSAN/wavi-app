@@ -385,6 +385,12 @@ class _ChatScreenState extends State<ChatScreen> {
       await _handleScheduleCreation(text);
       return;
     }
+    
+    // "관광지 정보" 키워드가 포함되면 무조건 RAG 서버 호출
+    if (text.contains('관광지 정보') || text.contains('관광지정보')) {
+      await _handleTourismInfo(text);
+      return;
+    }
     try {
       // OpenAI API 호출
       // 현재 언어 설정 가져오기 (안전하게)
@@ -469,6 +475,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // 일정 생성 요청인지 확인
   bool _isScheduleRequest(String text) {
+    // "관광지 정보" 키워드가 포함되면 일정 생성이 아님
+    if (text.contains('관광지 정보') || text.contains('관광지정보')) {
+      return false;
+    }
     final scheduleKeywords = [
       '일정',
       '약속',
@@ -944,7 +954,14 @@ class _ChatScreenState extends State<ChatScreen> {
       }
 
       final dateTime = DateTime.parse(datetimeStr.replaceAll(' ', 'T'));
-      final EnddateTime = DateTime.parse(EnddateTimeStr.replaceAll(' ', 'T'));
+      
+      DateTime? EnddateTime;
+      if (EnddateTimeStr != null && EnddateTimeStr.isNotEmpty) {
+        EnddateTime = DateTime.parse(EnddateTimeStr.replaceAll(' ', 'T'));
+      } else {
+        // Default to 1 hour after start time if not specified
+        EnddateTime = dateTime.add(const Duration(hours: 1));
+      }
 
       // Location 객체 생성 - 실제 장소 검색
       Location? location;
@@ -1591,6 +1608,47 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
       );
+    }
+  }
+
+  Future<void> _handleTourismInfo(String text) async {
+    try {
+      // RAG 서버에서 관광지 정보 가져오기
+      final context = await _tourismService.fetchTourismContext(text);
+
+      // RAG 정보를 바탕으로 GPT 응답 생성
+      final response = await _openAIService.sendMessage([
+        ChatMessage(
+          content: "사용자 질문: $text\n\n참조 데이터: $context\n\n이 정보를 바탕으로 친절하게 답변해줘.",
+          type: MessageType.user,
+        ),
+      ]);
+
+      if (response != null) {
+        setState(() {
+          _messages.add(response);
+          _isTyping = false;
+        });
+        _scrollToBottom();
+        _saveChatHistory();
+
+        // TTS 읽기
+        final cleanText = removeEmojis(response.content);
+        await _flutterTts.speak(cleanText);
+      }
+    } catch (e) {
+      print('관광지 정보 처리 오류: $e');
+      final errorMessage = ChatMessage(
+        content: '관광지 정보를 가져오는 중 오류가 발생했습니다: $e',
+        type: MessageType.assistant,
+      );
+      
+      setState(() {
+        _messages.add(errorMessage);
+        _isTyping = false;
+      });
+      _scrollToBottom();
+      _saveChatHistory();
     }
   }
 }
