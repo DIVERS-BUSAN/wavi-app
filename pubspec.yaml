@@ -54,6 +54,7 @@ dependencies:
   permission_handler: ^11.3.1
   geolocator: ^12.0.0
   url_launcher:
+  fluttertoast: ^8.2.8
 
 dev_dependencies:
   flutter_test:

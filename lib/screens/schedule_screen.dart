@@ -10,6 +10,7 @@ import '../services/schedule_service.dart';
 import '../services/notification_service.dart';
 import '../providers/language_provider.dart';
 import '../l10n/app_localizations.dart';
+import '../utils/toast_utils.dart';
 
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({super.key});
@@ -95,9 +96,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       _loadSchedules();
       if (mounted) {
         final l10n = AppLocalizations.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.scheduleDeleted)),
-        );
+        ToastUtils.showSuccess(l10n.scheduleDeleted);
       }
     }
   }
@@ -857,21 +856,12 @@ class _AddScheduleDialogState extends State<AddScheduleDialog> {
     if (success && mounted) {
       Navigator.pop(context);
       widget.onScheduleAdded();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(widget.schedule == null 
-              ? AppLocalizations.of(context).scheduleAdded
-              : AppLocalizations.of(context).scheduleUpdated),
-        ),
-      );
+      ToastUtils.showSuccess(widget.schedule == null 
+          ? AppLocalizations.of(context).scheduleAdded
+          : AppLocalizations.of(context).scheduleUpdated);
     } else if (!success && mounted) {
       // 저장 실패 시 에러 메시지 표시
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(AppLocalizations.of(context).saveScheduleFailed),
-          backgroundColor: Colors.red,
-        ),
-      );
+      ToastUtils.showError(AppLocalizations.of(context).saveScheduleFailed);
     }
   }
 

@@ -7,6 +7,7 @@ import '../services/schedule_service.dart';
 import '../services/notification_service.dart';
 import '../providers/language_provider.dart';
 import '../l10n/app_localizations.dart';
+import '../utils/toast_utils.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -227,9 +228,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
       child: InkWell(
         onTap: () {
           // TODO: 해당 일정으로 이동하는 기능 추가
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('${schedule.title} ${l10n.goToSchedule}')),
-          );
+          ToastUtils.showInfo('${schedule.title} ${l10n.goToSchedule}');
         },
         borderRadius: BorderRadius.circular(12),
         child: Padding(

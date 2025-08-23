@@ -11,6 +11,7 @@ import '../services/schedule_service.dart';
 import '../models/schedule.dart';
 import '../providers/language_provider.dart';
 import '../l10n/app_localizations.dart';
+import '../utils/toast_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
@@ -263,9 +264,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _toggleListening() async {
     if (!_speechEnabled) {
       final l10n = AppLocalizations.of(context);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.micPermissionRequired)));
+      ToastUtils.showError(l10n.micPermissionRequired);
       return;
     }
 
@@ -327,19 +326,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
       final l10n = AppLocalizations.of(context);
       if (_voiceChatMode) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(l10n.voiceChatModeStarted),
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        ToastUtils.showInfo(l10n.voiceChatModeStarted);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(l10n.listeningToVoice),
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        ToastUtils.showInfo(l10n.listeningToVoice);
       }
     } catch (e) {
       print('Start listening error: $e');
@@ -794,9 +783,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _addWelcomeMessage();
 
       final l10n = AppLocalizations.of(context);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(l10n.chatHistoryDeleted)));
+      ToastUtils.showSuccess(l10n.chatHistoryDeleted);
     } catch (e) {
       print('채팅 기록 삭제 실패: $e');
     }

@@ -9,6 +9,7 @@ import '../widgets/location_picker.dart';
 import '../services/schedule_service.dart';
 import '../providers/language_provider.dart';
 import '../l10n/app_localizations.dart';
+import '../utils/toast_utils.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:intl/intl.dart';
@@ -770,9 +771,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           }
         } catch (e) {
           print('도보 길안내 실패: $e');
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('도보 길안내를 실행할 수 없습니다.')),
-          );
+          ToastUtils.showError('도보 길안내를 실행할 수 없습니다.');
         }
       }
     }
