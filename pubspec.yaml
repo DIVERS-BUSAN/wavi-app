@@ -30,16 +30,20 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  provider: ^6.1.2
   flutter_tts: ^4.2.0
   speech_to_text: ^7.0.0
   http: ^1.2.2
-  intl: ^0.19.0
+  intl: ^0.20.2
   google_generative_ai: ^0.4.0
-  kakao_map_sdk:
+  kakao_flutter_sdk_navi:
+  kakao_flutter_sdk_common:
   kakao_map_plugin:
   flutter_dotenv: ^5.1.0
   shared_preferences: ^2.3.3
@@ -49,6 +53,7 @@ dependencies:
   timezone: ^0.9.4
   permission_handler: ^11.3.1
   geolocator: ^12.0.0
+  url_launcher:
 
 dev_dependencies:
   flutter_test:

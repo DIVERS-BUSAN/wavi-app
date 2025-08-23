@@ -8,9 +8,9 @@ import '../models/chat_message.dart';
 class OpenAIService {
   static const String _baseUrl = 'https://api.openai.com/v1';
   static const String _model = 'gpt-3.5-turbo';
-  
+
   late final String _apiKey;
-  
+
   OpenAIService() {
     _apiKey = dotenv.env['OPENAI_API_KEY'] ?? '';
     if (_apiKey.isEmpty && kDebugMode) {
@@ -34,14 +34,12 @@ class OpenAIService {
       'messages': [
         {
           'role': 'system',
-          'content': '너는 사용자의 질문을 intent로 분류하는 분류기다. '
+          'content':
+              '너는 사용자의 질문을 intent로 분류하는 분류기다. '
               '만약 관광지, 여행, 명소, 입장료, 운영시간, 위치 등 관광, 놀거리, 먹거리 관련 질문이면 "tourism" '
-              '그 외는 "general" 만 출력해라.'
+              '그 외는 "general" 만 출력해라.',
         },
-        {
-          'role': 'user',
-          'content': userInput,
-        }
+        {'role': 'user', 'content': userInput},
       ],
       'max_tokens': 5,
       'temperature': 0.0,
@@ -62,7 +60,10 @@ class OpenAIService {
     }
   }
 
-  Future<ChatMessage?> sendMessage(List<ChatMessage> messages) async {
+  Future<ChatMessage?> sendMessage(
+    List<ChatMessage> messages, {
+    bool isEnglish = false,
+  }) async {
     if (_apiKey.isEmpty) {
       throw Exception('OpenAI API key가 설정되지 않았습니다. .env 파일을 확인해주세요.');
     }
@@ -75,17 +76,31 @@ class OpenAIService {
 
       // ChatMessage를 OpenAI API 형식으로 변환
       final apiMessages = messages
-          .where((msg) => msg.type != MessageType.system || msg.content.isNotEmpty)
-          .map((msg) => {
-                'role': _getApiRole(msg.type),
-                'content': msg.content,
-              })
+          .where(
+            (msg) => msg.type != MessageType.system || msg.content.isNotEmpty,
+          )
+          .map((msg) => {'role': _getApiRole(msg.type), 'content': msg.content})
           .toList();
 
-      // 시스템 메시지 추가 (웨이비 AI 비서 역할 정의)
-      apiMessages.insert(0, {
-        'role': 'system',
-        'content': '''당신은 "웨이비(WAVI)"라는 이름의 AI 비서입니다. 
+      // 언어별 시스템 메시지 추가 (웨이비 AI 비서 역할 정의)
+      final systemMessage = isEnglish
+          ? {
+              'role': 'system',
+              'content': '''You are an AI assistant named "WAVI". 
+You are a friendly and helpful AI assistant that helps users with schedule management, Kakao Navigation integration, and daily conversations.
+You have the following characteristics:
+
+1. Communicate with a friendly and warm tone
+2. Provide professional answers to schedule management and navigation-related questions
+3. Communicate naturally in English
+4. Provide concise yet helpful responses
+5. Use emojis appropriately when necessary
+
+Please provide helpful answers to the user's questions.''',
+            }
+          : {
+              'role': 'system',
+              'content': '''당신은 "웨이비(WAVI)"라는 이름의 AI 비서입니다. 
 사용자의 일정 관리, 카카오 네비게이션 연동, 그리고 일상 대화를 도와주는 친근하고 도움이 되는 AI 비서입니다.
 다음과 같은 특징을 가지고 있습니다:
 
@@ -95,8 +110,10 @@ class OpenAIService {
 4. 간결하면서도 도움이 되는 답변을 제공합니다
 5. 대한민국 부산광역시에 한정해서 질문에 대한 답변을 출력합니다.
 
-사용자의 질문에 도움이 되는 답변을 해주세요.'''
-      });
+사용자의 질문에 도움이 되는 답변을 해주세요.''',
+            };
+
+      apiMessages.insert(0, systemMessage);
 
       final requestBody = {
         'model': _model,
@@ -126,7 +143,7 @@ class OpenAIService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final content = data['choices'][0]['message']['content'] as String;
-        
+
         return ChatMessage(
           content: content.trim(),
           type: MessageType.assistant,
@@ -146,7 +163,7 @@ class OpenAIService {
       if (kDebugMode) {
         print('OpenAI Service Error: $e');
       }
-      
+
       if (e is SocketException) {
         throw Exception('인터넷 연결을 확인해주세요.');
       } else if (e is HttpException) {
@@ -175,18 +192,18 @@ class OpenAIService {
     try {
       final conversationText = messages
           .take(messages.length - 5) // 마지막 5개 메시지는 유지
-          .map((msg) => '${msg.type == MessageType.user ? 'User' : 'Assistant'}: ${msg.content}')
+          .map(
+            (msg) =>
+                '${msg.type == MessageType.user ? 'User' : 'Assistant'}: ${msg.content}',
+          )
           .join('\n');
 
       final summaryMessages = [
         {
           'role': 'system',
-          'content': '다음 대화를 간결하게 요약해주세요. 주요 내용과 맥락을 유지하되, 길이는 200자 이내로 해주세요.'
+          'content': '다음 대화를 간결하게 요약해주세요. 주요 내용과 맥락을 유지하되, 길이는 200자 이내로 해주세요.',
         },
-        {
-          'role': 'user', 
-          'content': conversationText
-        }
+        {'role': 'user', 'content': conversationText},
       ];
 
       final requestBody = {
@@ -214,7 +231,7 @@ class OpenAIService {
         print('Conversation summary failed: $e');
       }
     }
-    
+
     return '';
   }
 
@@ -225,11 +242,9 @@ class OpenAIService {
     try {
       final response = await http.get(
         Uri.parse('$_baseUrl/models'),
-        headers: {
-          'Authorization': 'Bearer $_apiKey',
-        },
+        headers: {'Authorization': 'Bearer $_apiKey'},
       );
-      
+
       return response.statusCode == 200;
     } catch (e) {
       return false;
